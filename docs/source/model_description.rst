@@ -433,11 +433,20 @@ Setting a very large :math:`H_0` renders the PDM effectively inactive.
   parameters, potentially leading to false conclusions because the parameter
   names imply distinct physical mechanisms that the data cannot distinguish.
 
+  The same equifinality extends to the frozen-ground module. Frozen-ground
+  blockage of infiltration during winter and early spring produces elevated
+  fast discharge — the same behavioral signature as a nonlinear soil recession
+  with high :math:`b`. When both are active and calibrated simultaneously,
+  the optimizer may drive the frozen-ground parameters (``fdd_threshold``,
+  ``snow_insulation_k``) toward values that effectively disable the module,
+  with :math:`b_{\text{soil}}` compensating. Streamflow alone cannot
+  distinguish frozen-soil bypassing from high-storage nonlinear drainage.
+
   Unless there is independent process evidence (tile-drain monitoring, tracer
-  data, direct macropore observations) that requires a mechanistically separate
-  fast pathway, prefer calibrating :math:`b_{\text{soil}}` and accepting the
-  result as an effective representation of the aggregate fast-response behavior
-  of the soil zone.
+  data, direct macropore observations, or soil temperature / frost-depth records)
+  that requires a mechanistically separate fast or frozen pathway, prefer
+  calibrating :math:`b_{\text{soil}}` and accepting the result as an effective
+  representation of the aggregate fast-response behavior of the soil zone.
 
 Evapotranspiration
 ~~~~~~~~~~~~~~~~~~
