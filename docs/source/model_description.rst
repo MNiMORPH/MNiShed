@@ -379,6 +379,59 @@ deviate substantially from this value.
     the theoretical Brutsaert-Nieber value (:math:`b = 2.2`) is recommended
     unless independent evidence supports a different value.
 
+Mean Residence Time for Nonlinear Reservoirs
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Because :math:`\tau` is defined as the drainage timescale specifically at
+the 1 mm reference storage :math:`H_{\text{ref}}`, it is **not directly
+comparable** across reservoirs with different recession exponents. Two
+reservoirs with identical :math:`\tau` but different :math:`b` drain at
+very different rates at any realistic storage depth above 1 mm, because
+the power-law nonlinearity amplifies (for :math:`b > 1`) or suppresses the
+drainage rate relative to the linear case.
+
+A physically meaningful alternative is the **mean residence time** (MRT)
+at a representative steady-state discharge :math:`Q_{\text{ref}}`. At
+steady state the outflow equals the input, so
+:math:`Q_{\text{ref}} = H_{ss}^b / \tau`, giving:
+
+.. math::
+
+    H_{ss} = \bigl(Q_{\text{ref}}\cdot\tau\bigr)^{1/b}
+
+    \text{MRT} = \frac{H_{ss}}{Q_{\text{ref}}} =
+        \frac{\tau^{1/b}}{Q_{\text{ref}}^{\,1-1/b}}
+
+For :math:`b = 1` (linear) this reduces exactly to :math:`\tau`,
+consistent with the standard result for exponential decay. For
+:math:`b > 1`, MRT is smaller than :math:`\tau` whenever
+:math:`Q_{\text{ref}} > 1` mm/day, reflecting the accelerated drainage at
+operating storage depths well above :math:`H_{\text{ref}}`.
+
+MRT is implemented as
+:meth:`~hydroravens.hydroravens.Reservoir.mean_residence_time`::
+
+    mrt = reservoir.mean_residence_time(Q_ref=0.5)  # [mm/day] → [days]
+
+**Choosing** :math:`Q_{\text{ref}}`: use the long-term mean discharge
+attributed to the reservoir. For a cascade this is approximately the
+mean annual flux passing through that layer. The result is most useful
+as a cross-experiment or cross-basin diagnostic; its absolute value
+depends on the chosen reference flux.
+
+.. note::
+
+    Calibration studies (Wickert 2026) show that raw :math:`\tau` values
+    for strongly nonlinear reservoirs (:math:`b \approx 4`–5, typical of
+    tile-drain-influenced soil zones) can differ by more than an order of
+    magnitude between experiments while MRT remains nearly constant at
+    ~5–6 days, because the optimizer adjusts :math:`\tau` to compensate
+    for changes in :math:`b` and the operating storage level. MRT is
+    therefore the recommended diagnostic for comparing calibrated
+    timescales across experiments or basins, and should be reported
+    alongside :math:`\tau` and :math:`b` whenever the recession exponent
+    differs among reservoirs.
+
 Saturation-Excess Runoff (PDM, Optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 

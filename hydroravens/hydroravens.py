@@ -222,6 +222,53 @@ class Reservoir(object):
             self.tile_res.discharge(dt)
             self.H_discharge += self.tile_res.H_discharge
 
+    def mean_residence_time(self, Q_ref):
+        """
+        Mean residence time [days] at a reference steady-state discharge.
+
+        For a nonlinear reservoir governed by
+        :math:`Q = (H/\\tau)\\cdot(H/H_{\\mathrm{ref}})^{b-1}`, the
+        steady-state storage at discharge *Q_ref* is
+        :math:`H_{ss} = (Q_{\\mathrm{ref}} \\cdot \\tau)^{1/b}`, giving
+
+        .. math::
+
+            \\mathrm{MRT} = \\frac{H_{ss}}{Q_{\\mathrm{ref}}} =
+                \\frac{\\tau^{1/b}}{Q_{\\mathrm{ref}}^{\\,1 - 1/b}}
+
+        For a linear reservoir (*b* = 1) this reduces exactly to
+        :math:`\\tau`.  For *b* > 1, MRT is smaller than :math:`\\tau`
+        whenever :math:`Q_{\\mathrm{ref}} > 1` mm/day, reflecting the
+        faster drainage at realistic operating storage depths.
+
+        Unlike :attr:`t_efold`, which is the e-folding time only at the
+        1 mm reference storage, MRT is a physically comparable timescale
+        across reservoirs with different recession exponents.
+
+        Parameters
+        ----------
+        Q_ref : float
+            Representative steady-state discharge from this reservoir
+            [mm/day]. Use the long-term mean flux attributed to this
+            layer (e.g. mean annual discharge partitioned by reservoir).
+
+        Returns
+        -------
+        float
+            Mean residence time [days].
+
+        Raises
+        ------
+        ValueError
+            If Q_ref <= 0.
+        """
+        if Q_ref <= 0:
+            raise ValueError("Q_ref must be > 0.")
+        b = self.recession_exponent
+        if b == 1.0:
+            return self.t_efold
+        return self.t_efold ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+
 
 class Snowpack(object):
     """
