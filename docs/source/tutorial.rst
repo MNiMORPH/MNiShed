@@ -36,10 +36,11 @@ Optional columns activate additional model processes:
 
 .. code-block:: text
 
-    ET [mm/day]                 # measured ET; enables evapotranspiration_method: datafile
-    Mean Temperature [C]        # activates snowpack and frozen-ground modules
-    Minimum Temperature [C]     # activates DTR-based FGI decay
-    Maximum Temperature [C]     # activates DTR-based FGI decay
+    Evapotranspiration [mm/day]  # measured ET; enables evapotranspiration_method: datafile
+    Mean Temperature [C]         # activates snowpack and frozen-ground modules
+    Minimum Temperature [C]      # activates DTR-based FGI decay and ThorntwaiteChang2019
+    Maximum Temperature [C]      # activates DTR-based FGI decay and ThorntwaiteChang2019
+    Photoperiod [hr]             # required for ThorntwaiteChang2019 ET method
 
 All columns must be at a daily timestep.  Missing values in the
 discharge column are allowed and are excluded from scoring.
@@ -201,7 +202,29 @@ configuration is valid and the fit is in the right ballpark:
 
 If the hydrograph shape is qualitatively reasonable (seasonal timing is
 correct, magnitudes are in the right range), proceed to calibration.
-If not, revisit the timescales or check the input data units.
+
+**Diagnosing a poor Stage 3 fit:**
+
+.. list-table::
+   :widths: 40 55
+   :header-rows: 1
+
+   * - Symptom
+     - Likely cause and fix
+   * - Modeled peak timing shifted by weeks
+     - Melt factor too high or low; soil τ too short or long.
+       Adjust ``PDD_melt_factor`` and ``log__t_efold_soil``.
+   * - Baseflow too high in summer
+     - Intermediate or deep τ too short, or f_exfiltration too high for
+       those layers.  Extend timescales; reduce exfiltration fractions.
+   * - Rising limb too slow, flashy peaks absent
+     - Soil τ too long; try shorter timescale or higher recession exponent.
+   * - Annual water balance far off (model wet or dry)
+     - Check ``drainage_basin_area__km2`` and discharge units.
+       Verify ``enforce_water_balance`` is set; check ET data for unit errors.
+   * - NSE near 0 or negative
+     - Check input data alignment — is precipitation spatially appropriate
+       for this basin?  Are dates in the correct format?
 
 Stage 4 — Calibrate
 --------------------
@@ -231,9 +254,11 @@ bounds from ``pr.log_t_efold_bounds`` as the starting point for
         upper:   6.0
         initial: 2.841    # from B–N prior
 
-After calibration, compare results using AIC to evaluate model
-structure.  See :doc:`calibration` for the scoring functions and AIC
-calculation.
+After calibration, compare results using AIC to evaluate model structure.
+The AIC is lower for better-fitting models and penalises additional free
+parameters.  A ΔAIC > 2 relative to a simpler model is required before
+the more complex structure is considered justified.  See :doc:`calibration`
+for the full AIC guide and metric selection.
 
 Stage 5 — Evaluate
 -------------------
@@ -251,9 +276,9 @@ After calibration, inspect the best-fit parameters and metrics:
         recession_exponents = [3.4, 2.203, 1.0],
         enforce_water_balance = 'global',
     )
-    print(f"KGE  = {result.kge:.3f}")
-    print(f"AIC  = {result.aic:.1f}")
-    print(f"BFI  = {result.bfi_mod:.3f}  (obs: {result.bfi_obs:.3f})")
+    print(f"Score = {result.score:.3f}")   # composite metric (KGE_logKGE here)
+    print(f"AIC   = {result.aic:.1f}")
+    print(f"BFI   = {result.bfi_mod:.3f}  (obs: {result.bfi_obs:.3f})")
 
 Key metrics to examine:
 

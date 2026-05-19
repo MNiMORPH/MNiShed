@@ -516,6 +516,52 @@ Setting a very large :math:`H_0` renders the PDM effectively inactive.
   calibrating :math:`b_{\text{soil}}` and accepting the result as an effective
   representation of the aggregate fast-response behavior of the soil zone.
 
+Suggested Model Structures
+~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The following guidelines summarise current knowledge on how to translate
+basin characteristics into model structure choices.  They are not universal
+rules; the appropriate structure for a given basin should be confirmed by
+AIC comparison (see :doc:`calibration`).
+
+**Choosing the number of reservoirs:**
+  Two reservoirs (soil + groundwater) are sufficient for many basins and
+  serve as a useful structural null hypothesis.  A third reservoir is
+  warranted when the recession cloud or hydrograph separation identifies
+  a clearly distinct intermediate timescale (days to weeks) that cannot
+  be captured by adjusting the two-reservoir parameters.  Adding reservoirs
+  beyond three rarely improves AIC because the additional timescale is
+  seldom independently identifiable from daily discharge alone.
+
+**Assigning recession exponents:**
+  The Brutsaert–Nieber (1977) lower-envelope slope from the recession cloud
+  gives the recession exponent for the intermediate reservoir — the slowest
+  pathway observable in the daily record.  See :doc:`recession_analysis`.
+
+  * Soil/fast reservoir: calibrate freely (typical range 2–6 for agricultural
+    or mixed catchments; reflects tile drainage or near-surface nonlinearity)
+  * Intermediate reservoir: fix at the B–N lower-envelope estimate for the
+    basin; do not calibrate unless the lower envelope is poorly defined
+  * Deep reservoir: fix at :math:`b = 1` (linear); the timescale is too long
+    and the flux too small for the recession cloud to constrain :math:`b`
+
+**Choosing the ET mode:**
+  ``et_reservoir_draw: true`` is recommended when the model has a
+  calibrated soil reservoir.  ET draws from post-cascade soil storage,
+  providing a zero-parameter temporal buffer equal to the soil MRT.
+  Use ``enforce_water_balance: 'global'`` alongside it to avoid hidden
+  per-year degrees of freedom that would complicate AIC comparisons.
+
+**Frozen-ground and fast-drainage modules:**
+  Use at most one of: frozen ground (``frozen_ground: true``), tile drains
+  (``tile_fractions > 0``), direct runoff (``direct_runoff: true``), PDM
+  (``pdm_H0__mm``), or a high calibrated :math:`b_{\text{soil}}`.  All five
+  mechanisms generate the same behavioral signature (fast spring or
+  event-driven pulse) and are equifinal when calibrated simultaneously from
+  streamflow alone.  The simplest first choice is to calibrate
+  :math:`b_{\text{soil}}` and leave the others inactive; activate one of
+  the explicit modules only if independent process evidence supports it.
+
 Evapotranspiration
 ~~~~~~~~~~~~~~~~~~
 
