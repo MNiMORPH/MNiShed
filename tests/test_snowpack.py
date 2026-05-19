@@ -60,6 +60,26 @@ def test_no_melt_below_freezing():
     assert excess_dd == pytest.approx(0.0)
 
 
+def test_accumulation_at_exactly_freezing():
+    """Precipitation accumulates as SWE at exactly T=0 (boundary of T <= 0 condition)."""
+    sp = Snowpack(melt_factor=2.0)
+    sp.set_temperature(0.0)
+    sp.recharge(10.0)
+    assert sp.Hwater == pytest.approx(10.0)
+    assert sp.H_infiltrated == pytest.approx(0.0)
+
+
+def test_no_melt_at_exactly_freezing():
+    """No melt and zero excess_dd at exactly T=0."""
+    sp = Snowpack(melt_factor=2.0)
+    sp.Hwater = 50.0
+    sp.set_temperature(0.0)
+    sp.recharge(0.0)
+    excess_dd = sp.melt(dt=1.0)
+    assert sp.Hwater == pytest.approx(50.0)
+    assert excess_dd == pytest.approx(0.0)
+
+
 def test_sublimation_removes_swe():
     """Negative recharge removes water from snowpack as sublimation."""
     sp = Snowpack(melt_factor=2.0)

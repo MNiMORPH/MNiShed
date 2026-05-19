@@ -99,6 +99,51 @@ def test_invalid_f_to_discharge_raises():
         Reservoir(t_efold=10.0, f_to_discharge=1.5)
 
 
+def test_nonlinear_discharge_exceeds_linear():
+    """b > 1 drains faster than b = 1 from the same initial storage."""
+    H0 = 4.0
+    tau = 10.0
+    res_linear = Reservoir(t_efold=tau, H0=H0)
+    res_linear.discharge(dt=1.0)
+
+    res_nonlinear = Reservoir(t_efold=tau, H0=H0)
+    res_nonlinear.recession_exponent = 2.0
+    res_nonlinear.discharge(dt=1.0)
+
+    assert res_nonlinear.H_exfiltrated > res_linear.H_exfiltrated
+
+
+def test_nonlinear_discharge_exact_formula():
+    """Nonlinear (b=2) discharge matches the exact analytical solution."""
+    tau = 10.0
+    b = 2.0
+    H0 = 4.0
+    dt = 1.0
+    # H_ref = 1.0 (default); tau_eff = tau * H_ref^(b-1) = tau
+    # H_new = [H0^(1-b) + (b-1)*dt/tau_eff]^(1/(1-b))
+    tau_eff = tau  # * 1.0^(b-1)
+    H_new = (H0 ** (1 - b) + (b - 1) * dt / tau_eff) ** (1 / (1 - b))
+    expected_dH = H0 - H_new
+
+    res = Reservoir(t_efold=tau, H0=H0)
+    res.recession_exponent = b
+    res.discharge(dt=dt)
+
+    assert res.H_exfiltrated == pytest.approx(expected_dH, rel=1e-9)
+    assert res.Hwater == pytest.approx(H0 - expected_dH, rel=1e-9)
+
+
+def test_nonlinear_discharge_water_balance():
+    """Water balance holds for b > 1: H_before == H_after + dH."""
+    res = Reservoir(t_efold=10.0, f_to_discharge=0.6, H0=4.0)
+    res.recession_exponent = 2.0
+    H_before = res.Hwater
+    res.discharge(dt=1.0)
+    assert H_before == pytest.approx(
+        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9
+    )
+
+
 def test_tile_drain_increases_discharge():
     """With tile drainage, total discharge exceeds non-tile case."""
     res_plain = Reservoir(t_efold=10.0, f_to_discharge=0.5, H0=100.0)

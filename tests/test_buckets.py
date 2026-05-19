@@ -98,17 +98,13 @@ def test_nse_regression(cannon):
 def test_water_balance_closure(cannon):
     """P - Q - ET - ΔS - ΔSWe < 0.1% of total P."""
     df = cannon.hydrodata
-    total_P = df["Precipitation [mm/day]"].sum()
-    total_Q = df["Specific Discharge (modeled) [mm/day]"].sum()
-    total_ET = df["ET for model [mm/day]"].sum()
-    delta_S = (
-        df["Subsurface storage (modeled total) [mm]"].iloc[-1]
-        - df["Subsurface storage (modeled total) [mm]"].iloc[0]
-    )
-    delta_swe = (
-        df["Snowpack (modeled) [mm SWE]"].iloc[-1]
-        - df["Snowpack (modeled) [mm SWE]"].iloc[0]
-    )
+    total_P  = df["Precipitation [mm/day]"].astype(float).sum()
+    total_Q  = df["Specific Discharge (modeled) [mm/day]"].astype(float).sum()
+    total_ET = df["ET for model [mm/day]"].astype(float).sum()
+    stor     = df["Subsurface storage (modeled total) [mm]"].astype(float)
+    swe      = df["Snowpack (modeled) [mm SWE]"].astype(float)
+    delta_S   = stor.iloc[-1] - stor.iloc[0]
+    delta_swe = swe.iloc[-1]  - swe.iloc[0]
     wb_error_fraction = abs(total_P - total_Q - total_ET - delta_S - delta_swe) / total_P
     assert wb_error_fraction < 0.001  # < 0.1% of P
 
