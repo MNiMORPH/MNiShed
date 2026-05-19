@@ -48,8 +48,13 @@ and educational applications.
    calibration
    recession_analysis
    priors
-   bmi
    references
+
+.. toctree::
+   :maxdepth: 2
+   :caption: CSDMS Basic Model Interface
+
+   bmi
 
 Quick Example
 ~~~~~~~~~~~~~
