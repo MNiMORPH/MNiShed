@@ -1,6 +1,7 @@
 [![DOI](https://zenodo.org/badge/199317220.svg)](https://doi.org/10.5281/zenodo.6787390)
 [![Documentation Status](https://readthedocs.org/projects/hydroravens/badge/?version=latest)](https://hydroravens.readthedocs.io/en/latest/?badge=latest)
 [![PyPI version](https://img.shields.io/pypi/v/hydroRaVENS)](https://pypi.org/project/hydroRaVENS/)
+[![Tests](https://github.com/MNiMORPH/hydroRaVENS/actions/workflows/tests.yml/badge.svg)](https://github.com/MNiMORPH/hydroRaVENS/actions/workflows/tests.yml)
 
 # :black_nib: HydroRaVENS
 **Rain and Variable Evapotranspiration, Nieve, and Streamflow**
