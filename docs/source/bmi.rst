@@ -60,6 +60,11 @@ File-driven
 
     bmi.finalize()
 
+Use :meth:`~hydroravens.BmiHydroRaVENS.update_until` to advance to a
+specific time without writing the loop yourself::
+
+    bmi.update_until(365.0)   # advance one year
+
 Online coupled
 ~~~~~~~~~~~~~~
 
@@ -80,10 +85,14 @@ Online coupled
         bmi.set_value("atmosphere__temperature", np.array([t_from_upstream]))
         bmi.update()
 
-        # Pass discharge downstream
-        q = np.empty(1, dtype=np.float64)
-        bmi.get_value("land_surface_water__runoff_volume_flux", q)
-        downstream_model.set_value("channel_entrance__discharge", q)
+        # Retrieve specific discharge [mm d⁻¹] and pass downstream.
+        # Convert to volumetric discharge [m³ s⁻¹] if the downstream model
+        # requires it (see "Converting specific discharge to volumetric flow"
+        # below).
+        q_mm_d = np.empty(1, dtype=np.float64)
+        bmi.get_value("land_surface_water__runoff_volume_flux", q_mm_d)
+        downstream_model.set_value("land_surface_water__runoff_volume_flux",
+                                   q_mm_d)
 
     bmi.finalize()
 
@@ -177,7 +186,7 @@ These variables are updated by each call to
    (indices 0–9) because the BMI specification requires variable names to
    be fixed at import time.  If you configure more than 10 reservoirs,
    :meth:`~hydroravens.BmiHydroRaVENS.initialize` will raise a
-   :exc:`ValueError` with instructions pointing to the three constants in
+   :exc:`ValueError` with instructions pointing to the four constants in
    ``hydroravens/bmi.py`` that need updating:
    ``_OUTPUT_VAR_NAMES``, ``_VAR_UNITS``, ``_RESERVOIR_DEPTH_NAMES``, and
    ``_BMI_MAX_RESERVOIRS``.  The total subsurface storage across all
@@ -232,6 +241,13 @@ counter starts at 0.0 after spin-up completes.
 object but does not call :meth:`~hydroravens.Buckets.finalize` on it,
 which would trigger an NSE print and a plot pop-up unsuitable for
 headless coupling runs.
+
+**Calling update() past the end of the record raises an error.** The
+file-driven loop ``while bmi.get_current_time() < bmi.get_end_time()``
+terminates correctly.  Calling :meth:`~hydroravens.BmiHydroRaVENS.update`
+after all rows have been consumed will raise a ``KeyError`` from the
+internal pandas DataFrame.  Guard against this in custom loops by checking
+``get_current_time() < get_end_time()`` before each call.
 
 API Reference
 -------------
