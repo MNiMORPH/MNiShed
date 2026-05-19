@@ -72,6 +72,16 @@ class BrutsaertNieber:
         Fitted B–N slope (exponent in –dQ/dt = a·Q^n). Set by :meth:`fit`.
     a_ : float
         Fitted coefficient. Set by :meth:`fit`.
+    r2_ : float
+        Coefficient of determination of the power-law (linear log–log) fit.
+        Set by :meth:`fit`.  Values below ~0.4 indicate a poor fit; a
+        warning is issued automatically.
+    r2_quadratic_ : float
+        R² of a degree-2 polynomial fit in log–log space. Set by
+        :meth:`fit`.  When substantially larger than :attr:`r2_`, the
+        recession cloud is systematically curved, suggesting the power-law
+        storage–discharge assumption does not hold; a warning is issued
+        automatically.
 
     Examples
     --------
@@ -88,6 +98,8 @@ class BrutsaertNieber:
         self.min_recession_days = int(min_recession_days)
         self.n_ = None
         self.a_ = None
+        self.r2_ = None
+        self.r2_quadratic_ = None
         self._Q_mid = None
         self._neg_dQdt = None
 
@@ -136,11 +148,25 @@ class BrutsaertNieber:
 
     def fit(self):
         """
-        Extract recession pairs and fit the log–log power law.
+        Extract recession pairs, fit the log–log power law, and assess fit
+        quality.
 
         Performs ordinary least-squares regression of log(–dQ/dt) on
         log(Q).  The resulting slope is stored in :attr:`n_` and the
         coefficient in :attr:`a_`.
+
+        Two goodness-of-fit diagnostics are computed and stored:
+
+        * :attr:`r2_` — R² of the linear (power-law) log–log fit.
+        * :attr:`r2_quadratic_` — R² of a degree-2 polynomial log–log fit.
+
+        A ``UserWarning`` is issued if the recession cloud shows systematic
+        curvature (quadratic fit substantially better than linear, ΔR² > 0.05),
+        or if the power-law fit is poor overall (R² < 0.4).  Curvature
+        indicates that the power-law storage–discharge assumption may not
+        hold; following Kirchner (2009), a non-parametric characterisation of
+        the catchment sensitivity function should be considered before
+        committing to a reservoir functional form.
 
         Returns
         -------
@@ -164,9 +190,50 @@ class BrutsaertNieber:
 
         log_Q = np.log(Q_mid)
         log_R = np.log(neg_dQdt)
+
+        # Linear (power-law) fit
         slope, intercept = np.polyfit(log_Q, log_R, 1)
         self.n_ = float(slope)
         self.a_ = float(np.exp(intercept))
+
+        # R² of the power-law fit
+        log_R_pred = slope * log_Q + intercept
+        ss_res = np.sum((log_R - log_R_pred) ** 2)
+        ss_tot = np.sum((log_R - np.mean(log_R)) ** 2)
+        self.r2_ = float(1.0 - ss_res / ss_tot) if ss_tot > 0 else 1.0
+
+        # Quadratic fit in log–log space (curvature test)
+        coeffs2 = np.polyfit(log_Q, log_R, 2)
+        log_R_pred2 = np.polyval(coeffs2, log_Q)
+        ss_res2 = np.sum((log_R - log_R_pred2) ** 2)
+        self.r2_quadratic_ = float(1.0 - ss_res2 / ss_tot) if ss_tot > 0 else 1.0
+        delta_r2 = self.r2_quadratic_ - self.r2_
+
+        # Goodness-of-fit warnings
+        if delta_r2 > 0.05:
+            warnings.warn(
+                f"B–N recession cloud shows systematic curvature in log–log "
+                f"space (power-law R² = {self.r2_:.2f}, quadratic R² = "
+                f"{self.r2_quadratic_:.2f}, ΔR² = {delta_r2:.2f}). "
+                f"The power-law storage–discharge assumption may not hold for "
+                f"this catchment. Following Kirchner (2009), consider "
+                f"characterising the catchment sensitivity function "
+                f"non-parametrically before choosing a reservoir functional "
+                f"form. Inspect the recession plot (bn.plot()) for guidance.",
+                UserWarning,
+                stacklevel=2,
+            )
+        elif self.r2_ < 0.4:
+            warnings.warn(
+                f"B–N recession cloud is poorly described by a power law "
+                f"(R² = {self.r2_:.2f}). "
+                f"Inspect the recession plot (bn.plot()) to assess whether a "
+                f"different functional form may be more appropriate for this "
+                f"catchment.",
+                UserWarning,
+                stacklevel=2,
+            )
+
         return self
 
     def to_reservoir_exponent(self):
@@ -220,13 +287,19 @@ class BrutsaertNieber:
             raise RuntimeError("Call fit() before summary().")
         b_hr = self.to_reservoir_exponent()
         b_str = f"{b_hr:.3f}" if np.isfinite(b_hr) else "∞"
+        delta_r2 = self.r2_quadratic_ - self.r2_
+        curv_note = (f"  ** curvature detected (ΔR² = {delta_r2:.2f})"
+                     if delta_r2 > 0.05 else "")
         print(
             f"Brutsaert–Nieber recession analysis\n"
             f"  Recession pairs used : {len(self._Q_mid)}\n"
             f"  Fitted slope  n      : {self.n_:.4f}\n"
             f"  Fitted coeff  a      : {self.a_:.4g}\n"
             f"  HydroRaVENS   b      : {b_str}\n"
-            f"  Reference (long-time Boussinesq): n = 1.5, b = 2.0"
+            f"  Power-law R²         : {self.r2_:.3f}\n"
+            f"  Quadratic R²         : {self.r2_quadratic_:.3f}"
+            + (f"\n{curv_note}" if curv_note else "") +
+            f"\n  Reference (long-time Boussinesq): n = 1.5, b = 2.0"
         )
 
     def plot(self, ax=None, show_fit=True, label=None, **scatter_kwargs):

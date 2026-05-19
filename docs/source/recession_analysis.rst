@@ -158,6 +158,50 @@ fixed at :math:`b = 1` independently.  The upper scatter reflects
 short, event-driven recessions (tile drains, surface runoff) that are
 better captured by a calibrated soil-zone exponent.
 
+Goodness of fit and the power-law assumption
+--------------------------------------------
+
+:meth:`~hydroravens.BrutsaertNieber.fit` automatically assesses whether
+the recession cloud is well described by a power law and issues a
+``UserWarning`` when it is not.
+
+Two diagnostics are computed and stored as attributes:
+
+* **R² of the power-law fit** (:attr:`~hydroravens.BrutsaertNieber.r2_`)
+  — coefficient of determination of the linear log–log regression.
+  The B–N cloud is inherently noisy (all types of recession contribute),
+  so R² values of 0.4–0.7 are typical for real catchments.  R² < 0.4
+  indicates a poor overall fit; inspect the plot.
+
+* **Curvature test** (:attr:`~hydroravens.BrutsaertNieber.r2_quadratic_`)
+  — R² of a degree-2 polynomial fit in log–log space.  If the quadratic
+  fit is substantially better than the linear fit (ΔR² > 0.05), the
+  recession cloud is systematically curved.  A straight line in log–log
+  space is the signature of a power-law storage–discharge relationship;
+  systematic curvature means this assumption does not hold.
+
+**What to do when the power-law assumption fails:**
+
+A curved recession cloud in log–log space signals that the catchment
+sensitivity function g(Q) — as defined by Kirchner (2009) — is not
+a power law.  This can arise from:
+
+* Multiple reservoirs draining simultaneously, each with different
+  exponents, producing a composite curve.  Consider whether a
+  multi-reservoir model with different fixed exponents captures the
+  cloud's shape better than a single-exponent fit.
+* A genuine threshold or non-power-law drainage process (e.g. a
+  perched water table that drains rapidly when full and slowly when
+  nearly empty).
+* Data quality issues (precipitation misattribution, rating curve
+  errors at low flow).
+
+In the first case, the lower envelope still provides a useful prior for
+the intermediate reservoir exponent.  In the second case, a different
+reservoir functional form may be needed — one that HydroRaVENS does not
+currently implement, following Kirchner's (2009) more general framework.
+In the third case, inspect and correct the input data before re-fitting.
+
 Interpretation guide
 --------------------
 
