@@ -89,21 +89,30 @@ physical roles and the exponent should be assigned accordingly:
      - The full recession cloud is dominated by the soil/fast response.
        Use as a calibration starting point; typical calibrated values
        are *b* ≈ 3–4 for agricultural catchments.
-   * - Karst (intermediate)
-     - 2.203 (fixed)
-     - The theoretical Brutsaert & Nieber (1977) long-time baseflow
-       value. The data rarely constrain this independently; fix it
-       rather than calibrate.
+   * - Intermediate
+     - B–N lower-envelope estimate (fix, do not calibrate)
+     - The lower envelope of the B–N cloud represents the *slowest
+       observable* recession pathway — typically the shallow Quaternary
+       zone (outwash, fractured regolith; MRT days to weeks).  The truly
+       deep reservoir drains too slowly and at too low a flux to register
+       in the cloud, so B–N is capturing the intermediate, not the deep.
+       The long-time Boussinesq value (:math:`b = 2.0`) is a reasonable
+       lower bound; basin-specific fits typically yield :math:`b \approx
+       2.0`–2.5. Fix rather than calibrate (see equifinality note in
+       :doc:`model_description`).
    * - Deep (slowest)
      - 1.0 (fixed)
-     - Near-infinite residence time; the linear approximation is
-       adequate and avoids adding a free parameter.
+     - Mean residence time of decades to centuries; contributes too
+       little flux to constrain *b* from streamflow.  The linear
+       approximation (Darcy flow in a confined or semi-confined aquifer)
+       is physically appropriate and avoids adding a free parameter.
 
 The B–N slope *n* from the **lower envelope** of the cloud corresponds
-to long-duration, groundwater-dominated recessions and is the most
-physically meaningful region for setting the slow-reservoir exponent.
+to long-duration recessions dominated by the intermediate subsurface
+zone and is the most physically meaningful region for setting the
+intermediate-reservoir exponent.
 The upper scatter reflects short, event-driven recessions (tile drains,
-surface runoff) and should not be used to set the baseflow exponent.
+surface runoff) and should not be used to set the intermediate exponent.
 
 For a complete prior-estimation workflow that combines the B–N analysis
 with timescale estimation, see :func:`~hydroravens.suggest_priors` and
@@ -140,16 +149,23 @@ The output might look like::
       Reference (long-time Boussinesq): n = 1.5, b = 2.0
 
 The lower envelope of the B–N cloud corresponds to long-duration
-recessions (groundwater-dominated) and is the most physically meaningful
-region.  The upper scatter reflects short, event-driven recessions (tile
-drains, surface runoff) that may follow a different exponent.
+recessions dominated by the intermediate subsurface zone (shallow
+Quaternary units, fractured regolith; MRT days to weeks) and is the most
+physically meaningful region for setting the intermediate-reservoir
+exponent.  The truly deep reservoir (MRT decades–centuries) produces
+discharge too small to dominate any part of the cloud and should be
+fixed at :math:`b = 1` independently.  The upper scatter reflects
+short, event-driven recessions (tile drains, surface runoff) that are
+better captured by a calibrated soil-zone exponent.
 
 Interpretation guide
 --------------------
 
-* **n ≈ 1.5, b ≈ 2** — groundwater recession consistent with the
-  Boussinesq long-time solution.  A reasonable fixed prior for deep
-  (karst or fractured-rock) reservoirs.
+* **n ≈ 1.5, b ≈ 2** — recession consistent with the Boussinesq
+  long-time solution for a horizontal unconfined aquifer.  A reasonable
+  fixed prior for the **intermediate** reservoir (shallow Quaternary
+  units, fractured regolith).  The deep reservoir should be fixed at
+  :math:`b = 1` regardless of the B–N result.
 * **n ≈ 1.3–1.6, b ≈ 1.5–2.5** — typical mixed catchment range.
 * **n > 1.7, b > 3** — rapid nonlinear drainage, often reflecting
   near-surface soil processes.  Calibrate rather than fix.

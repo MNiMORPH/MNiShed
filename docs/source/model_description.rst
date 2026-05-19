@@ -372,12 +372,27 @@ deviate substantially from this value.
 
 .. note::
 
-    In calibration against streamflow, the recession exponent of the deepest
-    calibrated reservoir (typically the karst or bedrock zone) tends to be
-    poorly constrained and may drift toward high values that mimic
-    threshold-like behavior (see below). Fixing deep-reservoir exponents at
-    the theoretical Brutsaert-Nieber value (:math:`b = 2.2`) is recommended
-    unless independent evidence supports a different value.
+    **Which reservoir does B–N represent?**
+    The lower envelope of the Brutsaert–Nieber recession plot corresponds to
+    the *slowest clearly observable* recession pathway — not necessarily the
+    deepest reservoir.  A truly deep groundwater reservoir (mean residence time
+    of decades to centuries) contributes discharge that is so small and so
+    nearly constant that it is indistinguishable from noise at typical gauge
+    resolution; it does not dominate any part of the recession cloud.  The
+    lower envelope instead reflects the *intermediate* subsurface zone
+    (shallow Quaternary units, outwash lenses, fractured regolith) whose
+    mean residence time is days to weeks — slow enough to persist through
+    multi-day recessions, fast enough to register clearly above baseflow.
+
+    Practical implication: apply the B–N-derived :math:`b` to the
+    **intermediate** reservoir, not the deepest one.  Fix the deepest
+    reservoir at :math:`b = 1` (linear Darcy flow in a confined or
+    semi-confined aquifer), which avoids adding a free parameter for a
+    process that the streamflow record cannot constrain.  Calibration
+    experiments on the Cannon River (Wickert 2026) confirm this assignment:
+    the B–N lower-envelope value :math:`b \approx 2.2` matches the
+    intermediate reservoir optimum, while the deep reservoir (MRT ~ 137 yr)
+    produces discharge too small to appear in the B–N cloud.
 
 Mean Residence Time for Nonlinear Reservoirs
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
