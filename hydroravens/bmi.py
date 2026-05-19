@@ -42,6 +42,7 @@ _INPUT_VAR_NAMES = (
 
 _OUTPUT_VAR_NAMES = (
     "land_surface_water__runoff_volume_flux",
+    "channel_exit_water__volume_flow_rate",
     "snowpack__liquid_equivalent_depth",
     "subsurface_water__depth",
     "subsurface_water_reservoir_0__depth",
@@ -70,6 +71,7 @@ _VAR_UNITS = {
     "atmosphere__maximum_temperature":                       "degC",
     "land_surface_water__potential_evapotranspiration_volume_flux": "mm d-1",
     "land_surface_water__runoff_volume_flux":                "mm d-1",
+    "channel_exit_water__volume_flow_rate":                  "m3 s-1",
     "snowpack__liquid_equivalent_depth":                     "mm",
     "subsurface_water__depth":                               "mm",
     "subsurface_water_reservoir_0__depth":                   "mm",
@@ -412,6 +414,15 @@ class BmiHydroRaVENS(Bmi):
                 return np.nan
             val = m.hydrodata.at[idx, "Specific Discharge (modeled) [mm/day]"]
             return float(val) if not pd.isna(val) else np.nan
+
+        if name == "channel_exit_water__volume_flow_rate":
+            if idx < first:
+                return np.nan
+            val = m.hydrodata.at[idx, "Specific Discharge (modeled) [mm/day]"]
+            if pd.isna(val):
+                return np.nan
+            # mm→m (×1e-3) × km²→m² (×1e6) / day→s (×86400) = ×1e3/86400
+            return float(val) * m.drainage_basin_area__km2 * 1e3 / 86400.0
 
         if name == "snowpack__liquid_equivalent_depth":
             return float(m.snowpack.Hwater) if m.has_snowpack else 0.0

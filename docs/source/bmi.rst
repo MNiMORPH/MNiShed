@@ -85,14 +85,13 @@ Online coupled
         bmi.set_value("atmosphere__temperature", np.array([t_from_upstream]))
         bmi.update()
 
-        # Retrieve specific discharge [mm d⁻¹] and pass downstream.
-        # Convert to volumetric discharge [m³ s⁻¹] if the downstream model
-        # requires it (see "Converting specific discharge to volumetric flow"
-        # below).
-        q_mm_d = np.empty(1, dtype=np.float64)
-        bmi.get_value("land_surface_water__runoff_volume_flux", q_mm_d)
-        downstream_model.set_value("land_surface_water__runoff_volume_flux",
-                                   q_mm_d)
+        # Pass volumetric discharge [m³ s⁻¹] to a downstream channel or
+        # sediment model.  Specific discharge [mm d⁻¹] is also available
+        # via "land_surface_water__runoff_volume_flux".
+        q_m3s = np.empty(1, dtype=np.float64)
+        bmi.get_value("channel_exit_water__volume_flow_rate", q_m3s)
+        downstream_model.set_value("channel_exit_water__volume_flow_rate",
+                                   q_m3s)
 
     bmi.finalize()
 
@@ -105,7 +104,7 @@ discharge in mm d⁻¹.  To convert to volumetric discharge Q [m³ s⁻¹]:
 .. code-block:: python
 
     area_km2 = bmi._model.drainage_basin_area__km2
-    Q_m3s = q_mm_d * area_km2 * 1e3 / 86400
+    Q_m3s = q_mm_d * 1e-3 * area_km2 * 1e6 / 86400  # mm→m, km²→m², day→s
 
 Exposed Variables
 -----------------
@@ -163,7 +162,10 @@ These variables are updated by each call to
      - Source
    * - ``land_surface_water__runoff_volume_flux``
      - mm d⁻¹
-     - Modelled specific discharge
+     - Modelled specific discharge (area-normalised)
+   * - ``channel_exit_water__volume_flow_rate``
+     - m³ s⁻¹
+     - Volumetric discharge (specific discharge × catchment area)
    * - ``snowpack__liquid_equivalent_depth``
      - mm
      - Snowpack SWE; 0.0 if no snowpack
