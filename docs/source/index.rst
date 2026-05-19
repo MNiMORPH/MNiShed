@@ -52,7 +52,7 @@ and educational applications.
 
 .. toctree::
    :maxdepth: 2
-   :caption: CSDMS Basic Model Interface
+   :caption: Integration
 
    bmi
 
