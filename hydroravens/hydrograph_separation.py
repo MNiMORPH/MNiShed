@@ -236,6 +236,12 @@ class HydrographSeparation:
         """
         Estimate a recession timescale from recession-segment analysis.
 
+        Both current callers (τ_shallow and τ_soil in :meth:`_fit_timescales_td`)
+        use ``mode='within'``.  τ_karst has its own dedicated pipeline in
+        :meth:`_fit_recession`, which uses the same per-segment-minimum approach
+        as ``mode='cross'`` but adds a long-term cross-check and reconciliation
+        step not available here.
+
         Two modes:
 
         ``'within'`` (default) — for fast/intermediate timescales:
@@ -245,10 +251,11 @@ class HydrographSeparation:
             Use short segments (5-20 d) for τ_shallow; longer segments (≥15 d)
             on the rolling-minimum envelope for τ_soil.
 
-        ``'cross'`` — for slow timescales (τ_karst):
+        ``'cross'`` — for inter-annual timescales:
             Record the minimum Q within each segment and fit log(Q_min) vs
             absolute time across all segments.  Captures the INTER-ANNUAL
             drainage trend that persists after fast reservoirs empty.
+            Not called internally; available for external or diagnostic use.
 
         Parameters
         ----------
