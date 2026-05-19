@@ -131,17 +131,12 @@ def test_et_positive(cannon):
 
 def test_snowpack_peaks_in_winter(cannon):
     """SWE peaks in winter (Dec–Feb), not in summer (Jun–Aug)."""
-    df = cannon.hydrodata.copy()
-    df["Date"] = cannon.hydrodata["Date"]
-    try:
-        import pandas as pd
-        dates = pd.to_datetime(df["Date"])
-        swe = df["Snowpack (modeled) [mm SWE]"].values
-        winter_mask = dates.dt.month.isin([12, 1, 2])
-        summer_mask = dates.dt.month.isin([6, 7, 8])
-        assert swe[winter_mask].mean() > swe[summer_mask].mean()
-    except Exception:
-        pytest.skip("Date parsing not available for this run")
+    import pandas as pd
+    dates = pd.to_datetime(cannon.hydrodata["Date"])
+    swe = cannon.hydrodata["Snowpack (modeled) [mm SWE]"].values
+    winter_mask = dates.dt.month.isin([12, 1, 2])
+    summer_mask = dates.dt.month.isin([6, 7, 8])
+    assert swe[winter_mask].mean() > swe[summer_mask].mean()
 
 
 def test_three_reservoirs_initialized(cannon):

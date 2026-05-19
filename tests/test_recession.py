@@ -68,15 +68,23 @@ def test_to_reservoir_exponent_raises_before_fit():
 
 
 def test_n_ge_2_returns_inf_and_warns():
-    """n ≥ 2 returns np.inf and issues a UserWarning."""
+    """to_reservoir_exponent() returns np.inf and warns when n ≥ 2."""
+    Q = _linear_recession(Q0=50.0, a=0.05, n_steps=30)
+    bn = BrutsaertNieber(Q, min_recession_days=3).fit()
+    bn.n_ = 2.1  # directly exercise the n ≥ 2 branch
+    with pytest.warns(UserWarning, match="undefined"):
+        result = bn.to_reservoir_exponent()
+    assert result == np.inf
+
+
+def test_n_ge_2_fit_warns():
+    """A fitted n ≥ 2 triggers the conversion warning (end-to-end)."""
     Q = _powerlaw_recession(Q0=200.0, a=0.0001, n_bn=2.2, n_steps=80)
     if len(Q) < 5:
         pytest.skip("Synthetic recession too short for this parameter set")
-    bn = BrutsaertNieber(Q, min_recession_days=3)
-    with warnings.catch_warnings(record=True):
-        warnings.simplefilter("always")
-        bn.fit()
-    bn.n_ = 2.1  # force n >= 2 to test conversion warning
+    bn = BrutsaertNieber(Q, min_recession_days=3).fit()
+    if bn.n_ < 2.0:
+        pytest.skip(f"Euler integration gave n={bn.n_:.2f} < 2; skip end-to-end check")
     with pytest.warns(UserWarning, match="undefined"):
         result = bn.to_reservoir_exponent()
     assert result == np.inf
@@ -86,7 +94,7 @@ def test_fit_raises_on_too_few_pairs():
     """Fewer than 3 recession pairs raises ValueError."""
     Q = np.array([10.0, 8.0, 9.0, 7.0, 5.0])  # non-monotone; short segments
     bn = BrutsaertNieber(Q, min_recession_days=10)
-    with pytest.raises(ValueError, match="fewer" if False else ""):
+    with pytest.raises(ValueError, match="Only"):
         bn.fit()
 
 
@@ -115,7 +123,9 @@ def test_multiple_segments_concatenated():
 def test_zeros_and_negatives_skipped():
     """Zero and negative values in Q do not cause errors."""
     Q = np.array([10.0, 8.0, 6.0, 4.0, 0.0, -1.0, 5.0, 4.0, 3.0, 2.0, 1.0])
-    bn = BrutsaertNieber(Q, min_recession_days=3).fit()
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore", UserWarning)
+        bn = BrutsaertNieber(Q, min_recession_days=3).fit()
     assert bn.n_ is not None
 
 
