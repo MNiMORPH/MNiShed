@@ -47,7 +47,19 @@ _OUTPUT_VAR_NAMES = (
     "subsurface_water_reservoir_0__depth",
     "subsurface_water_reservoir_1__depth",
     "subsurface_water_reservoir_2__depth",
+    "subsurface_water_reservoir_3__depth",
+    "subsurface_water_reservoir_4__depth",
+    "subsurface_water_reservoir_5__depth",
+    "subsurface_water_reservoir_6__depth",
+    "subsurface_water_reservoir_7__depth",
+    "subsurface_water_reservoir_8__depth",
+    "subsurface_water_reservoir_9__depth",
 )
+
+# Hard cap: reservoirs 0–9 are declared as BMI output variables.
+# To support more than 10 reservoirs, add names to _OUTPUT_VAR_NAMES,
+# entries to _VAR_UNITS and _RESERVOIR_DEPTH_NAMES, and raise this constant.
+_BMI_MAX_RESERVOIRS = 10
 
 _ALL_VAR_NAMES = frozenset(_INPUT_VAR_NAMES + _OUTPUT_VAR_NAMES)
 
@@ -63,6 +75,13 @@ _VAR_UNITS = {
     "subsurface_water_reservoir_0__depth":                   "mm",
     "subsurface_water_reservoir_1__depth":                   "mm",
     "subsurface_water_reservoir_2__depth":                   "mm",
+    "subsurface_water_reservoir_3__depth":                   "mm",
+    "subsurface_water_reservoir_4__depth":                   "mm",
+    "subsurface_water_reservoir_5__depth":                   "mm",
+    "subsurface_water_reservoir_6__depth":                   "mm",
+    "subsurface_water_reservoir_7__depth":                   "mm",
+    "subsurface_water_reservoir_8__depth":                   "mm",
+    "subsurface_water_reservoir_9__depth":                   "mm",
 }
 
 # HydroRaVENS DataFrame column name for each input variable
@@ -80,6 +99,13 @@ _RESERVOIR_DEPTH_NAMES = (
     "subsurface_water_reservoir_0__depth",
     "subsurface_water_reservoir_1__depth",
     "subsurface_water_reservoir_2__depth",
+    "subsurface_water_reservoir_3__depth",
+    "subsurface_water_reservoir_4__depth",
+    "subsurface_water_reservoir_5__depth",
+    "subsurface_water_reservoir_6__depth",
+    "subsurface_water_reservoir_7__depth",
+    "subsurface_water_reservoir_8__depth",
+    "subsurface_water_reservoir_9__depth",
 )
 
 
@@ -186,6 +212,17 @@ class BmiHydroRaVENS(Bmi):
         """
         self._model = Buckets()
         self._model.initialize(config_file)
+        n = len(self._model.reservoirs)
+        if n > _BMI_MAX_RESERVOIRS:
+            raise ValueError(
+                f"This model configuration has {n} reservoirs, but the BMI "
+                f"wrapper declares outputs for at most {_BMI_MAX_RESERVOIRS} "
+                f"(subsurface_water_reservoir_0__depth through "
+                f"subsurface_water_reservoir_{_BMI_MAX_RESERVOIRS - 1}__depth). "
+                f"To support more reservoirs, add names to _OUTPUT_VAR_NAMES, "
+                f"_VAR_UNITS, and _RESERVOIR_DEPTH_NAMES in hydroravens/bmi.py "
+                f"and raise _BMI_MAX_RESERVOIRS."
+            )
         # Buckets.initialize() ends with _timestep_i at end-of-record if
         # spin_up_cycles > 0 (spin-up is run via run(), which exhausts the
         # index).  Reset to the start so BMI update() steps from row 0.
