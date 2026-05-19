@@ -14,6 +14,8 @@ import os
 import numpy as np
 import pytest
 
+pytest.importorskip("bmipy", reason="bmipy not installed; skipping BMI tests (pip install 'hydroRaVENS[bmi]')")
+
 # ---------------------------------------------------------------------------
 # Helpers
 # ---------------------------------------------------------------------------
