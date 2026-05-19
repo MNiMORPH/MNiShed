@@ -523,22 +523,90 @@ Two methods are supported:
 
 **Method 1: From Data**
   ET is read directly from the input CSV and scaled to close the annual water balance:
-  
+
   .. math::
-  
+
       E_{\text{scaled}} = E_{\text{observed}} \cdot \frac{P_{\text{annual}} - Q_{\text{observed,annual}}}{ET_{\text{observed,annual}}}
 
 **Method 2: Thornthwaite-Chang (2019)**
   Daily reference ET (:math:`ET_0`) is estimated from temperature and photoperiod:
-  
+
   .. math::
-  
+
       ET_0 = \text{f}(T_{\max}, T_{\min}, \text{photoperiod})
-  
+
   Then scaled by water year to match observed P − Q balance.
 
-In both cases, the annual scaling factor is stored and applied to ensure that 
+In both cases, the annual scaling factor is stored and applied to ensure that
 :math:`P - Q - E = 0` over each water year.
+
+Reservoir-draw mode and temporal buffering
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When ``et_reservoir_draw: true``, ET is not subtracted from precipitation before
+it enters the model. Instead, the full daily precipitation (or snowmelt) recharges
+the top reservoir, the cascade drains all reservoirs to produce discharge, and
+potential ET is then drawn from the remaining soil-zone storage:
+
+.. math::
+
+    E_{\text{actual},t} = \min\!\left(E_{\text{pot},t},\ H_{\text{soil},t}^{\text{post-cascade}}\right)
+
+This sequence has two important consequences.
+
+First, **ET is temporally buffered by soil storage**. The soil reservoir
+integrates precipitation over a timescale set by its mean residence time
+(the calibrated :math:`\tau_{\text{soil}}` and :math:`b_{\text{soil}}`), so ET
+draws from accumulated soil moisture rather than from today's precipitation alone.
+On a day with no rain, the soil still contains the residue of recent inputs and
+ET can continue near its potential rate. The degree of buffering depends on basin
+characteristics: catchments with large, slow soil stores sustain ET through longer
+dry intervals than those with thin, fast-draining soils. This temporal delay is
+captured implicitly through the calibrated soil timescale without requiring an
+additional free parameter.
+
+Second, **actual ET is capped at available soil storage**. During extended dry
+spells, the soil depletes progressively. Once storage is exhausted, actual ET
+drops to zero and the unmet potential ET is discarded. There is no explicit
+wilting-point threshold by default (``wp_soil = 0``), so the soil can in principle
+drain completely.
+
+**Nonlinear recession as an implicit wilting-point analog:**
+  When :math:`b_{\text{soil}} > 1`, drainage collapses nonlinearly as storage
+  falls — the lower the storage, the less water leaves per unit time. For strongly
+  nonlinear reservoirs (high :math:`b`), this produces near-threshold behavior: as
+  the soil approaches empty, drainage becomes negligible and the remaining storage
+  is held for ET rather than discharged. The calibrated exponent therefore encodes
+  an effective depletion threshold that is emergent from the storage–discharge
+  relationship rather than prescribed as a fixed wilting-point depth. Whether this
+  implicit threshold is physically adequate depends on the catchment: in basins
+  where calibrated :math:`b_{\text{soil}}` is large, this behavior may be
+  sufficient; in basins with near-linear soil drainage (:math:`b \approx 1`),
+  the implicit threshold is weak and an explicit wilting point may be more
+  appropriate.
+
+**On adding an explicit wilting point:**
+  A formal wilting point (``wp_soil > 0``) prevents ET extraction below a
+  prescribed storage depth and can be combined with a spatially variable
+  (Gaussian CDF) form to represent heterogeneous soil moisture across the
+  catchment. However, adding this parameter is only warranted when:
+
+  * systematic residual analysis shows the model overestimates late-summer
+    baseflow (soil not depleting enough) or underestimates drought-period
+    ET (ET too aggressive on dry days); and
+  * the improvement in AIC exceeds the penalty for the additional free
+    parameter (:math:`\Delta\text{AIC} > 2`).
+
+  High :math:`b_{\text{soil}}` and a wilting point encode overlapping physics
+  (both limit ET when storage is low), so calibrating both simultaneously
+  risks equifinality. Prefer diagnosing the need from residuals before
+  adding the parameter.
+
+The ``et_alpha`` parameter (default 1.0) controls what fraction of potential ET
+is drawn from the top reservoir; the remainder is drawn from the second reservoir.
+Setting ``et_alpha = 1.0`` confines all ET to the soil zone, which is appropriate
+when the intermediate and deep reservoirs represent confined or semi-confined
+aquifers that are physically isolated from the root zone.
 
 Model Skill Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~
