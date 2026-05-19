@@ -164,12 +164,25 @@ These variables are updated by each call to
    * - ``subsurface_water_reservoir_0__depth``
      - mm
      - Reservoir 0 storage (shallowest)
-   * - ``subsurface_water_reservoir_1__depth``
+   * - ``subsurface_water_reservoir_1__depth`` … ``subsurface_water_reservoir_9__depth``
      - mm
-     - Reservoir 1 storage
-   * - ``subsurface_water_reservoir_2__depth``
-     - mm
-     - Reservoir 2 storage (deepest); ``nan`` if fewer than 3 reservoirs
+     - Reservoirs 1–9 storage (deeper); ``nan`` for indices ≥ number of
+       configured reservoirs
+
+.. note::
+
+   HydroRaVENS itself places no limit on the number of reservoirs — you
+   can add as many as you like to the ``reservoirs:`` block in the YAML
+   configuration.  The BMI wrapper caps *exposed* reservoir outputs at 10
+   (indices 0–9) because the BMI specification requires variable names to
+   be fixed at import time.  If you configure more than 10 reservoirs,
+   :meth:`~hydroravens.BmiHydroRaVENS.initialize` will raise a
+   :exc:`ValueError` with instructions pointing to the three constants in
+   ``hydroravens/bmi.py`` that need updating:
+   ``_OUTPUT_VAR_NAMES``, ``_VAR_UNITS``, ``_RESERVOIR_DEPTH_NAMES``, and
+   ``_BMI_MAX_RESERVOIRS``.  The total subsurface storage across all
+   reservoirs is always available via ``subsurface_water__depth``
+   regardless of reservoir count.
 
 Grid and Time
 -------------
