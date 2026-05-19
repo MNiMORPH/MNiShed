@@ -88,14 +88,17 @@ def test_list_lengths_match_n_reservoirs():
 # Fallback behaviour when BrutsaertNieber cannot fit
 # ---------------------------------------------------------------------------
 
+@pytest.mark.filterwarnings("ignore::RuntimeWarning")
 def test_bn_failure_defaults_b_fast_to_2():
-    """Flat Q has no recession pairs; BN fit fails → b_fast defaults to 2.0."""
+    """Flat Q has no recession pairs; BN fit fails → b_fast defaults to 2.0.
+
+    RuntimeWarnings are suppressed: numpy's Welch/nanmean emits them when
+    computing the PSD of a zero-variance series, which is expected for this
+    degenerate input and handled by suggest_priors' except-Exception fallback.
+    """
     Q = np.ones(100)
     with pytest.warns(UserWarning, match="BrutsaertNieber fit failed"):
-        import warnings as _w
-        with _w.catch_warnings():
-            _w.simplefilter("ignore", RuntimeWarning)
-            pr = suggest_priors(Q, n_reservoirs=2)
+        pr = suggest_priors(Q, n_reservoirs=2)
     assert pr.recession_exponents[0] == pytest.approx(2.0)
 
 
