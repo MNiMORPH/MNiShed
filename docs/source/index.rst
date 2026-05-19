@@ -48,6 +48,7 @@ and educational applications.
    calibration
    recession_analysis
    priors
+   bmi
    references
 
 Quick Example

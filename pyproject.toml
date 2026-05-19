@@ -46,6 +46,9 @@ docs = [
   "sphinx>=4.0",
   "sphinx-rtd-theme>=1.0",
 ]
+bmi = [
+  "bmipy>=2.0",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "hydroravens._version.__version__"}
