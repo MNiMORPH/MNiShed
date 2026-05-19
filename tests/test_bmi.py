@@ -26,6 +26,7 @@ EXAMPLE_CONFIG = "cannon_cfg.yml"
 P_NAME = "atmosphere_water__liquid_equivalent_precipitation_rate"
 T_NAME = "atmosphere__temperature"
 Q_NAME = "land_surface_water__runoff_volume_flux"
+Q_VOL_NAME = "channel_exit_water__volume_flow_rate"
 SWE_NAME = "snowpack__liquid_equivalent_depth"
 STOR_NAME = "subsurface_water__depth"
 RES0_NAME = "subsurface_water_reservoir_0__depth"
@@ -181,6 +182,20 @@ def test_get_value_discharge_finite_after_update(bmi):
     bmi.get_value(Q_NAME, dest)
     assert np.isfinite(dest[0])
     assert dest[0] >= 0.0
+
+
+def test_get_value_volumetric_discharge_after_update(bmi):
+    """Volumetric discharge is finite, positive, and consistent with specific discharge."""
+    bmi.update()
+    dest_q = np.empty(1, dtype=np.float64)
+    dest_vol = np.empty(1, dtype=np.float64)
+    bmi.get_value(Q_NAME, dest_q)
+    bmi.get_value(Q_VOL_NAME, dest_vol)
+    assert np.isfinite(dest_vol[0])
+    assert dest_vol[0] >= 0.0
+    area_km2 = bmi._model.drainage_basin_area__km2
+    expected = dest_q[0] * 1e-3 * area_km2 * 1e6 / 86400
+    assert dest_vol[0] == pytest.approx(expected)
 
 
 def test_get_value_swe_after_update(bmi):
