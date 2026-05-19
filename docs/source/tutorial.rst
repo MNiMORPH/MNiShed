@@ -282,11 +282,40 @@ After calibration, inspect the best-fit parameters and metrics:
 
 Key metrics to examine:
 
-- **KGE** and **logKGE** — overall and low-flow performance.
+- **Score (KGE_logKGE)** — overall and low-flow performance combined.
 - **AIC** — penalises extra parameters; use to compare model structures.
 - **BFI** — check that modeled baseflow index matches observations.
 - **KGE_logFDC** — flow duration curve match; sensitive to reservoir
   partitioning.
+
+**Reporting mean residence time (MRT):**
+
+Raw e-folding times (τ) are not physically comparable across reservoirs
+or experiments when the recession exponent *b* differs.  After obtaining
+best-fit parameters, compute MRT for each reservoir using
+:meth:`~hydroravens.Reservoir.mean_residence_time` with the long-term mean
+flux attributed to that layer as ``Q_ref``:
+
+.. code-block:: python
+
+    buckets = result.buckets
+
+    # Mean annual discharge attributed to each reservoir.
+    # Approximate as: total mean Q × exfiltration-weighted fraction.
+    # For a quick cross-experiment comparison, use mean total Q as Q_ref.
+    import numpy as np
+    Q_mean = buckets.hydrodata['Specific Discharge (modeled) [mm/day]'].mean()
+
+    for i, res in enumerate(buckets.reservoirs):
+        mrt = res.mean_residence_time(Q_ref=Q_mean)
+        print(f"Reservoir {i}: τ={res.t_efold:.1f}d, b={res.recession_exponent:.3f}, "
+              f"MRT={mrt:.1f}d  (Q_ref={Q_mean:.3f} mm/d)")
+
+MRT should be reported alongside τ and *b* whenever comparing calibrated
+models across experiments or basins.  τ alone is misleading when *b* > 1,
+because the optimizer can trade τ against *b* while holding MRT nearly
+constant.  See :ref:`mean-residence-time` in :doc:`model_description` for
+the derivation and interpretation.
 
 See Also
 --------

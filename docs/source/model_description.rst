@@ -405,6 +405,8 @@ very different rates at any realistic storage depth above 1 mm, because
 the power-law nonlinearity amplifies (for :math:`b > 1`) or suppresses the
 drainage rate relative to the linear case.
 
+.. _mean-residence-time:
+
 A physically meaningful alternative is the **mean residence time** (MRT)
 at a representative steady-state discharge :math:`Q_{\text{ref}}`. At
 steady state the outflow equals the input, so
