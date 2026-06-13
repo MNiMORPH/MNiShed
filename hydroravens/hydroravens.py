@@ -39,16 +39,19 @@ class Reservoir(object):
     proportional to the amount of water held in the reservoir.
     """
 
-    def __init__(self, t_efold, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
+    def __init__(self, t_recession, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
                  H0=0., f_tile=0.0, tau_tile=None):
         """
-        Initialize a linear reservoir.
+        Initialize a reservoir.
 
         Parameters
         ----------
-        t_efold : float
-            E-folding residence time for reservoir depletion (days, or
-            whatever time unit matches the model time steps).
+        t_recession : float
+            Recession time scale [days]. For a linear reservoir (recession
+            exponent b = 1) this equals the true e-folding time. For b > 1
+            the actual mean residence time depends on storage level; use
+            :meth:`mean_residence_time` to obtain a physically comparable
+            timescale at a given reference discharge.
         f_to_discharge : float, optional
             Fraction of water lost each time step that exits as river
             discharge. The remainder (1 - f_to_discharge) infiltrates to
@@ -80,13 +83,13 @@ class Reservoir(object):
         Raises
         ------
         ValueError
-            If t_efold <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
+            If t_recession <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
             pdm_H0 <= 0, f_tile < 0 or > 1, or f_tile > 0 with no tau_tile.
         """
         self.Hwater = H0
         self.Hmax = Hmax
         self.pdm_H0 = pdm_H0
-        self.t_efold = t_efold
+        self.t_recession = t_recession
         self.f_to_discharge = f_to_discharge
 
         # Initialized here so all instance attributes exist before
@@ -98,8 +101,8 @@ class Reservoir(object):
         self.H_discharge = 0.
 
         # Check values and note whether they are reasonable
-        if t_efold <= 0:
-            raise ValueError("t_efold must be > 0.")
+        if t_recession <= 0:
+            raise ValueError("t_recession must be > 0.")
         if f_to_discharge < 0:
             raise ValueError("Negative f_to_discharge not possible.")
         elif f_to_discharge > 1:
@@ -193,19 +196,18 @@ class Reservoir(object):
         Parameters
         ----------
         dt : float
-            Time step duration (same units as t_efold; typically days).
+            Time step duration (same units as t_recession; typically days).
         """
         b   = self.recession_exponent
         H0  = self.Hwater
         if b == 1.0 or H0 <= 0.0:
-            dH = H0 * (1 - np.exp(-dt / self.t_efold))
+            dH = H0 * (1 - np.exp(-dt / self.t_recession))
         else:
-            # Exact integration of dH/dt = -(H/τ)·(H/H_ref)^(b-1)
-            #   = -H^b / (τ · H_ref^(b-1))
-            # Substituting u = H^(1-b):  du/dt = (b-1)/τ_eff
-            # => H(t+dt) = [H0^(1-b) + (b-1)·dt/τ_eff]^(1/(1-b))
-            # τ is the e-folding time at H = recession_H_ref; never reaches 0.
-            tau_eff = self.t_efold * self.recession_H_ref ** (b - 1.0)
+            # Exact integration of dH/dt = -(H/t_recession)·(H/H_ref)^(b-1)
+            #   = -H^b / (t_recession · H_ref^(b-1))
+            # Substituting u = H^(1-b):  du/dt = (b-1)/tau_eff
+            # => H(t+dt) = [H0^(1-b) + (b-1)·dt/tau_eff]^(1/(1-b))
+            tau_eff = self.t_recession * self.recession_H_ref ** (b - 1.0)
             H_new   = (H0 ** (1.0 - b) + (b - 1.0) * dt / tau_eff) ** (1.0 / (1.0 - b))
             dH      = H0 - max(0.0, H_new)
         self.H_exfiltrated = dH * self.f_to_discharge
@@ -241,7 +243,7 @@ class Reservoir(object):
         whenever :math:`Q_{\\mathrm{ref}} > 1` mm/day, reflecting the
         faster drainage at realistic operating storage depths.
 
-        Unlike :attr:`t_efold`, which is the e-folding time only at the
+        Unlike :attr:`t_recession`, which is the recession time scale only at the
         1 mm reference storage, MRT is a physically comparable timescale
         across reservoirs with different recession exponents.
 
@@ -266,8 +268,8 @@ class Reservoir(object):
             raise ValueError("Q_ref must be > 0.")
         b = self.recession_exponent
         if b == 1.0:
-            return self.t_efold
-        return self.t_efold ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+            return self.t_recession
+        return self.t_recession ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
 
 
 class Snowpack(object):
@@ -606,7 +608,7 @@ class Buckets(object):
                                                    [1.0] * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
-                t_efold        = self.cfg['reservoirs']['e_folding_residence_times__days'][i],
+                t_recession    = self.cfg['reservoirs']['recession_timescales__days'][i],
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
                 Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
                 pdm_H0         = _pdm_H0[i],

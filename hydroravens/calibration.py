@@ -327,7 +327,7 @@ def _steady_state_depths(reservoirs, mean_q):
     Parameters
     ----------
     reservoirs : list of Reservoir
-        Ordered shallowest to deepest; each has .t_efold, .f_to_discharge,
+        Ordered shallowest to deepest; each has .t_recession, .f_to_discharge,
         and .Hmax attributes.
     mean_q : float
         Long-run mean specific discharge [mm/day], used as the steady-state
@@ -351,7 +351,7 @@ def _steady_state_depths(reservoirs, mean_q):
     depths = []
     q_in = float(mean_q)
     for res in reservoirs:
-        H_eq = q_in / (np.exp(1.0 / res.t_efold) - 1.0)
+        H_eq = q_in / (np.exp(1.0 / res.t_recession) - 1.0)
         depths.append(min(H_eq, res.Hmax))
         # Tile drainage reduces the recharge reaching the next reservoir.
         q_in *= (1.0 - res.f_to_discharge) * (1.0 - res.f_tile)
@@ -362,7 +362,7 @@ def _steady_state_depths(reservoirs, mean_q):
 # Public API
 # ---------------------------------------------------------------------------
 
-def run_and_score(cfg, t_efold=None, f_to_discharge=None, Hmax=None,
+def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                   pdm_H0=None, f_tile=None, tau_tile=None,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
                   et_scale=None, et_alpha=None,
@@ -382,8 +382,8 @@ def run_and_score(cfg, t_efold=None, f_to_discharge=None, Hmax=None,
     cfg : str
         Path to a YAML configuration file. Should have spin_up_cycles: 0
         so that spin-up is performed here with the calibrated parameters.
-    t_efold : list of float, optional
-        E-folding residence times [days], one per reservoir (shallowest
+    t_recession : list of float, optional
+        Recession time scales [days], one per reservoir (shallowest
         first). Overrides the values in cfg.
     f_to_discharge : list of float, optional
         Exfiltration fractions to stream, one per reservoir except the
@@ -540,10 +540,10 @@ def run_and_score(cfg, t_efold=None, f_to_discharge=None, Hmax=None,
     # --- Parameter overrides and free-parameter count ---
     k = 0
 
-    if t_efold is not None:
-        for i, val in enumerate(t_efold):
-            b.reservoirs[i].t_efold = val
-        k += len(t_efold)
+    if t_recession is not None:
+        for i, val in enumerate(t_recession):
+            b.reservoirs[i].t_recession = val
+        k += len(t_recession)
 
     if f_to_discharge is not None:
         for i, val in enumerate(f_to_discharge):
@@ -658,7 +658,7 @@ def run_and_score(cfg, t_efold=None, f_to_discharge=None, Hmax=None,
 
     # --- Spin up on the full record with calibrated parameters ---
     if spin_up_cycles is None:
-        tau_max = max(r.t_efold for r in b.reservoirs)
+        tau_max = max(r.t_recession for r in b.reservoirs)
         spin_up_cycles = math.ceil(tau_max / len(b.hydrodata))
     for _ in range(spin_up_cycles):
         b.run()

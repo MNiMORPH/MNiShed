@@ -50,7 +50,7 @@ class Priors:
 
     Attributes
     ----------
-    t_efold : list of float
+    t_recession : list of float
         Suggested e-folding residence times [days], fastest reservoir first.
         ``None`` entries indicate that the timescale could not be estimated
         from the data (fall back to calibration defaults).
@@ -62,8 +62,8 @@ class Priors:
         to 1.0 (linear).
     initial_depths : list of float
         Estimated initial storage depths [mm], fastest reservoir first.
-    log_t_efold_bounds : dict
-        Calibration bounds in log10(days) for each ``log__t_efold_*``
+    log_t_recession_bounds : dict
+        Calibration bounds in log10(days) for each ``log__t_recession_*``
         parameter, as returned by
         :meth:`~hydroravens.HydrographSeparation.get_parameter_priors`.
     bn : BrutsaertNieber
@@ -76,12 +76,12 @@ class Priors:
         Number of reservoirs these priors are intended for.
     """
 
-    def __init__(self, t_efold, recession_exponents, initial_depths,
-                 log_t_efold_bounds, bn, hs, n_reservoirs):
-        self.t_efold              = t_efold
+    def __init__(self, t_recession, recession_exponents, initial_depths,
+                 log_t_recession_bounds, bn, hs, n_reservoirs):
+        self.t_recession              = t_recession
         self.recession_exponents  = recession_exponents
         self.initial_depths       = initial_depths
-        self.log_t_efold_bounds   = log_t_efold_bounds
+        self.log_t_recession_bounds   = log_t_recession_bounds
         self.bn                   = bn
         self.hs                   = hs
         self.n_reservoirs         = n_reservoirs
@@ -102,7 +102,7 @@ class Priors:
         print("=" * 60)
 
         print("\nE-folding residence times (fastest → slowest):")
-        for label, tau in zip(labels, self.t_efold):
+        for label, tau in zip(labels, self.t_recession):
             if tau is None:
                 print(f"  {label:8s}: could not be estimated — use calibration default")
             else:
@@ -125,8 +125,8 @@ class Priors:
             print(f"  {label:8s}: {h0:.1f} mm")
 
         print("\nCalibration bounds (log10 days) for params.yml:")
-        if self.log_t_efold_bounds:
-            for key, bounds in self.log_t_efold_bounds.items():
+        if self.log_t_recession_bounds:
+            for key, bounds in self.log_t_recession_bounds.items():
                 if bounds is None:
                     print(f"  {key}: not estimated — keep params.yml defaults")
                 else:
@@ -162,7 +162,7 @@ class Priors:
             return f"{v:.1f}" if v is not None else "null  # could not be estimated"
 
         tau_lines  = "\n".join(f"        - {_fmt(t)}  # {l}" for t, l in
-                                zip(self.t_efold, labels))
+                                zip(self.t_recession, labels))
         exfilt_lines = "\n".join(
             f"        - {0.8 if i == 0 else (0.5 if i < n - 1 else 1.0)}"
             f"  # {l} — placeholder; calibrate"
@@ -176,7 +176,7 @@ class Priors:
 
         snippet = (
             f"reservoirs:\n"
-            f"    e_folding_residence_times__days:\n{tau_lines}\n"
+            f"    recession_timescales__days:\n{tau_lines}\n"
             f"    exfiltration_fractions:\n{exfilt_lines}\n"
             f"    maximum_effective_depths__mm:\n{hmax_lines}\n"
             f"    recession_exponents:\n{b_lines}\n"
@@ -234,7 +234,7 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
 
     **Timescales** come from the spectral + recession decomposition in
     :class:`~hydroravens.HydrographSeparation`.  ``None`` entries in
-    ``Priors.t_efold`` mean the timescale could not be resolved from the
+    ``Priors.t_recession`` mean the timescale could not be resolved from the
     data; fall back to calibration defaults in that case.
 
     The B–N slope and the overall b estimate reflect the *catchment-
@@ -293,14 +293,14 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
         ic     = hs.get_initial_conditions()
         bounds = hs.get_parameter_priors()
         h0_list = ic['H0']                        # fastest first
-        # Convert log-scale bounds back to linear for t_efold display
-        t_efold = []
+        # Convert log-scale bounds back to linear for t_recession display
+        t_recession = []
         for i in range(n_reservoirs):
             key = list(bounds.keys())[i] if i < len(bounds) else None
             if key and bounds[key] is not None:
-                t_efold.append(round(10 ** bounds[key]['initial'], 1))
+                t_recession.append(round(10 ** bounds[key]['initial'], 1))
             else:
-                t_efold.append(None)
+                t_recession.append(None)
     except Exception as e:
         warnings.warn(
             f"HydrographSeparation fit failed ({e}); "
@@ -308,15 +308,15 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
             UserWarning, stacklevel=2,
         )
         h0_list = [None] * n_reservoirs
-        t_efold = [None] * n_reservoirs
+        t_recession = [None] * n_reservoirs
         bounds  = {}
 
     return Priors(
-        t_efold             = t_efold,
+        t_recession             = t_recession,
         recession_exponents = recession_exponents,
         initial_depths      = [round(float(h), 1) if h is not None else None
                                 for h in h0_list],
-        log_t_efold_bounds  = bounds,
+        log_t_recession_bounds  = bounds,
         bn                  = bn,
         hs                  = hs,
         n_reservoirs        = n_reservoirs,
