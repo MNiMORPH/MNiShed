@@ -811,16 +811,24 @@ class Buckets(object):
                 >= self.water_year_start_month
             )
 
-    def compute_global_ET_multiplier(self):
+    def compute_global_ET_multiplier(self, start=None, end=None):
         """
         Compute a single ET scale factor to close the long-term water balance.
 
         Computes scale = sum(P - Q_obs) / sum(ET_raw) over all days where
         P, ET, and Q_obs are all finite, and stores it as self.global_et_multiplier.
         Unlike compute_ET_multiplier(), which fits one multiplier per water
-        year, this uses a single ratio for the full record and does not
-        overfit interannual variability. Appropriate when enforce_water_balance
-        is set to 'global'.
+        year, this uses a single ratio and does not overfit interannual
+        variability. Appropriate when enforce_water_balance is set to 'global'.
+
+        Parameters
+        ----------
+        start : str or datetime-like, optional
+            Start of the window used to compute the multiplier (inclusive).
+            If None, uses the full record.
+        end : str or datetime-like, optional
+            End of the window used to compute the multiplier (inclusive).
+            If None, uses the full record.
         """
         if self.et_method == 'datafile':
             _raw_ET = np.asarray(self.hydrodata['Evapotranspiration [mm/day]'])
@@ -832,6 +840,10 @@ class Buckets(object):
         mask = (self.hydrodata['Specific Discharge [mm/day]'].notna()
                 & self.hydrodata['Precipitation [mm/day]'].notna()
                 & np.isfinite(_raw_ET))
+        if start is not None:
+            mask &= self.hydrodata['Date'] >= pd.Timestamp(start)
+        if end is not None:
+            mask &= self.hydrodata['Date'] <= pd.Timestamp(end)
         P_sum  = float(self.hydrodata.loc[mask, 'Precipitation [mm/day]'].sum())
         Q_sum  = float(self.hydrodata.loc[mask, 'Specific Discharge [mm/day]'].sum())
         ET_sum = float(_raw_ET[mask].sum())
@@ -845,7 +857,7 @@ class Buckets(object):
             if self.global_et_multiplier <= 0:
                 warnings.warn(
                     f"Global ET multiplier = {self.global_et_multiplier:.3f} (≤ 0); "
-                    "P − Q ≤ 0 over the full record. Setting to 1.0.",
+                    "P − Q ≤ 0 over the water-balance window. Setting to 1.0.",
                     UserWarning, stacklevel=2)
                 self.global_et_multiplier = 1.0
 
@@ -1282,22 +1294,47 @@ class Buckets(object):
                                     0.)))
         return ET0
 
-    def run(self):
+    def run(self, start=None, end=None):
         """
-        Advance the model through all time steps in self.hydrodata.
+        Advance the model through time steps in self.hydrodata.
 
-        Resets the internal time counter to the first row before iterating,
-        so run() is safe to call more than once (e.g. spin-up then main run).
-        Captures storage at the start of the run for check_mass_balance().
-        Part of the CSDMS Basic Model Interface.
+        Resets the internal time counter before iterating, so run() is safe
+        to call more than once (e.g. spin-up then main run). Captures storage
+        at the start of the run for check_mass_balance(). Part of the CSDMS
+        Basic Model Interface.
+
+        Parameters
+        ----------
+        start : str or datetime-like, optional
+            First date to simulate (inclusive). If None, starts from the
+            beginning of self.hydrodata.
+        end : str or datetime-like, optional
+            Last date to simulate (inclusive). If None, runs to the end of
+            self.hydrodata.
+
+        Notes
+        -----
+        When start or end is provided, only the matching rows are stepped
+        through; reservoir states at the boundaries carry in/out naturally,
+        making windowed runs chainable (e.g. spin-up on pre-decade data
+        followed by a scored run on the decade itself).
         """
         self._timestep_i = self.hydrodata.index[0]
         self._run_initial_storage = (
             sum(res.Hwater for res in self.reservoirs)
             + (self.snowpack.Hwater if self.has_snowpack else 0.0)
         )
-        for _ in self.hydrodata.index:
-            self.update()
+        if start is not None or end is not None:
+            date_mask = pd.Series(True, index=self.hydrodata.index)
+            if start is not None:
+                date_mask &= self.hydrodata['Date'] >= pd.Timestamp(start)
+            if end is not None:
+                date_mask &= self.hydrodata['Date'] <= pd.Timestamp(end)
+            for i in self.hydrodata.index[date_mask]:
+                self.update(time_step=i)
+        else:
+            for _ in self.hydrodata.index:
+                self.update()
 
     def finalize(self):
         """
