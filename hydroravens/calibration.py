@@ -498,9 +498,19 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
 
     Notes
     -----
-    Spin-up runs the full record regardless of start/end so that the
-    ET multiplier (computed per water year during initialize()) remains
-    valid and the initial storage state reflects long-run climatology.
+    When ``start`` is provided, the function operates in decade mode:
+
+    * ``enforce_water_balance='global'`` closes the water balance over
+      ``[start, end]`` only, not the full record.
+    * Spin-up runs only the pre-decade data (record start through the day
+      before ``start``), so reservoir states at the beginning of the decade
+      reflect pre-decade climatology rather than an arbitrary end-of-record
+      state.
+    * The scored run covers ``[start, end]`` only, continuing directly from
+      the spin-up end state.
+
+    When ``start`` is None (default), the original full-record behaviour is
+    preserved: spin-up and scoring both run the complete hydrodata record.
     """
     if metric not in _METRICS:
         raise ValueError(f"metric must be one of {list(_METRICS)}; got {metric!r}")
@@ -631,7 +641,7 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
 
     # --- Set initial storage states ---
     if initial_states is not None:
-        # Chained decade: restore end-of-previous-decade states exactly.
+        # Analytical or chained initial conditions supplied by the caller.
         for i, h in enumerate(initial_states['reservoirs']):
             b.reservoirs[i].Hwater = h
         if b.has_snowpack:
@@ -649,15 +659,28 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                               _steady_state_depths(b.reservoirs, mean_q_eff)):
                 res.Hwater = h
 
-    # --- Spin up on the full record with calibrated parameters ---
+    # --- Decade mode: recompute ET water balance over [start, end] only ---
+    if start is not None and b.enforce_water_balance == 'global':
+        b.compute_global_ET_multiplier(start=start, end=end)
+        b.compute_ET()
+
+    # --- Spin up, then final scored run ---
     if spin_up_cycles is None:
         tau_max = max(r.t_recession for r in b.reservoirs)
         spin_up_cycles = math.ceil(tau_max / len(b.hydrodata))
-    for _ in range(spin_up_cycles):
-        b.run()
 
-    # --- Final scored run ---
-    b.run()
+    if start is not None:
+        # Decade mode: spin up on pre-decade data only, then run the decade.
+        pre_decade_end = (pd.Timestamp(start)
+                          - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        for _ in range(spin_up_cycles):
+            b.run(end=pre_decade_end)
+        b.run(start=start, end=end)
+    else:
+        # Full-record mode: spin up and score on the complete hydrodata.
+        for _ in range(spin_up_cycles):
+            b.run()
+        b.run()
 
     # --- Capture end-of-run states for chaining to next decade ---
     final_states = {
@@ -672,7 +695,10 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     # window boundaries.  The routed series is written back into the Buckets
     # hydrodata frame so that CalibResult.buckets reflects routed discharge
     # for downstream plotting.
-    q_mod = b.hydrodata['Specific Discharge (modeled) [mm/day]']
+    # pd.to_numeric converts pd.NA (unrun rows in decade mode) to np.nan so
+    # that the numpy-based Nash cascade and downstream code handle them cleanly.
+    q_mod = pd.to_numeric(
+        b.hydrodata['Specific Discharge (modeled) [mm/day]'], errors='coerce')
     if routing_K is not None:
         routed = _nash_cascade(q_mod.to_numpy(), routing_N, routing_K)
         q_mod  = pd.Series(routed, index=q_mod.index, name=q_mod.name)
