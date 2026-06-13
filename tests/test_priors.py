@@ -73,14 +73,14 @@ def test_recession_exponents_n3():
 
 
 def test_list_lengths_match_n_reservoirs():
-    """t_efold, recession_exponents, and initial_depths all have length n_reservoirs."""
+    """t_recession, recession_exponents, and initial_depths all have length n_reservoirs."""
     Q = _recession_Q()
     for n in (1, 2, 3):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             pr = suggest_priors(Q, n_reservoirs=n)
         assert len(pr.recession_exponents) == n
-        assert len(pr.t_efold) == n
+        assert len(pr.t_recession) == n
         assert len(pr.initial_depths) == n
 
 
@@ -127,7 +127,7 @@ def test_to_yaml_snippet_contains_required_sections():
         pr = suggest_priors(Q, n_reservoirs=2)
     snippet = pr.to_yaml_snippet()
     assert 'reservoirs:' in snippet
-    assert 'e_folding_residence_times__days:' in snippet
+    assert 'recession_timescales__days:' in snippet
     assert 'recession_exponents:' in snippet
     assert 'initial_conditions:' in snippet
     assert 'water_reservoir_effective_depths__mm:' in snippet
@@ -148,15 +148,15 @@ def test_to_yaml_snippet_line_count_matches_n_reservoirs():
 
 
 # ---------------------------------------------------------------------------
-# log_t_efold_bounds structure
+# log_t_recession_bounds structure
 # ---------------------------------------------------------------------------
 
-def test_log_t_efold_bounds_structure():
+def test_log_t_recession_bounds_structure():
     """Non-None bounds satisfy lower < initial < upper."""
     Q = _recession_Q()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         pr = suggest_priors(Q, n_reservoirs=2)
-    for val in pr.log_t_efold_bounds.values():
+    for val in pr.log_t_recession_bounds.values():
         if val is not None:
             assert val['lower'] < val['initial'] < val['upper']
