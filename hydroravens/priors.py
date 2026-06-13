@@ -78,6 +78,25 @@ class Priors:
 
     def __init__(self, t_recession, recession_exponents, initial_depths,
                  log_t_recession_bounds, bn, hs, n_reservoirs):
+        """
+        Parameters
+        ----------
+        t_recession : list of float or None
+            Recession timescales [days], fastest reservoir first. ``None``
+            entries indicate the timescale could not be estimated.
+        recession_exponents : list of float
+            Power-law recession exponents, fastest reservoir first.
+        initial_depths : list of float
+            Initial storage depths [mm], fastest reservoir first.
+        log_t_recession_bounds : dict
+            Calibration bounds in log10(days) keyed by parameter name.
+        bn : BrutsaertNieber
+            Fitted recession analysis object.
+        hs : HydrographSeparation
+            Fitted hydrograph separation object.
+        n_reservoirs : int
+            Number of reservoirs these priors cover.
+        """
         self.t_recession              = t_recession
         self.recession_exponents  = recession_exponents
         self.initial_depths       = initial_depths

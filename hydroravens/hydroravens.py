@@ -545,17 +545,17 @@ class Buckets(object):
             YAML config, which itself defaults to ``'water-year'`` if absent.
             Accepted values:
 
-            ``'water-year'``  Scale ET by a per-water-year multiplier so that
-                P - Q - ET = 0 over each water year.
-            ``'global'``      Scale ET by a single multiplier computed from
-                sum(P - Q_obs) / sum(ET_raw) over the full record. No
-                per-year overfitting; does not add hidden degrees of freedom
-                to AIC comparisons.
-            ``'none'``        Use raw ET without correction. Appropriate only
-                when supplying trusted measured ET (e.g. eddy covariance).
-                Using ``'none'`` with ThorntwaiteChang2019 will raise a
-                warning because
-            Thornthwaite ET is known to carry large systematic biases.
+            * ``'water-year'`` — Scale ET by a per-water-year multiplier so
+              that P - Q - ET = 0 over each water year.
+            * ``'global'`` — Scale ET by a single multiplier computed from
+              sum(P - Q_obs) / sum(ET_raw) over the full record. No
+              per-year overfitting; does not add hidden degrees of freedom
+              to AIC comparisons.
+            * ``'none'`` — Use raw ET without correction. Appropriate only
+              when supplying trusted measured ET (e.g. eddy covariance).
+              Using ``'none'`` with ThorntwaiteChang2019 will raise a
+              warning because Thornthwaite ET carries large systematic
+              biases.
         """
         if config_file is None:
             warnings.warn("No configuration file provided; all values needed "+
@@ -1440,6 +1440,7 @@ class Buckets(object):
 
 
 def main():
+    """Command-line entry point: parse ``-y``/``--configfile`` and run the model."""
     parser = argparse.ArgumentParser(
         description='Pass the configuration file path to run hydroRaVENS.')
     parser.add_argument('-y', '--configfile', type=str,

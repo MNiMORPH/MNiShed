@@ -95,6 +95,36 @@ class HydrographSeparation:
                  precip=None, recession_min_duration=10,
                  recession_precip_threshold=0.5, recession_antecedent_days=3,
                  tau_deep=None, tau_fast=None):
+        """
+        Parameters
+        ----------
+        Q : array-like
+            Observed specific discharge [mm/day].
+        dt : float, optional
+            Timestep [days]. Default 1.0.
+        n_reservoirs : int or None, optional
+            Number of reservoirs. If None, selected by AIC. Default None.
+        max_reservoirs : int, optional
+            Maximum number of reservoirs to test when n_reservoirs is None.
+            Default 4.
+        precip : array-like or None, optional
+            Daily precipitation [mm/day], same length as Q. Used to mask
+            recession periods; if None, only discharge decline is used.
+        recession_min_duration : int, optional
+            Minimum qualifying recession length [days]. Default 10.
+        recession_precip_threshold : float, optional
+            Maximum daily precipitation within a recession segment [mm/day].
+            Default 0.5.
+        recession_antecedent_days : int, optional
+            Number of days before a recession that must also be dry.
+            Default 3.
+        tau_deep : float or None, optional
+            Externally supplied deep-reservoir timescale [days]; skips
+            recession fitting for that component when provided.
+        tau_fast : array-like or None, optional
+            Externally supplied fast-reservoir timescales [days]; skips
+            spectral fitting when provided.
+        """
         self.Q    = np.asarray(Q, dtype=float)
         self.dt   = float(dt)
         self.n_reservoirs            = n_reservoirs

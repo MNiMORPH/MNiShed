@@ -93,6 +93,18 @@ class BrutsaertNieber:
     """
 
     def __init__(self, Q, dt=1.0, min_recession_days=3):
+        """
+        Parameters
+        ----------
+        Q : array-like
+            Observed specific discharge time series [mm/day or any consistent
+            unit]. Must be non-negative; zero and negative values are skipped.
+        dt : float, optional
+            Timestep length [days]. Default 1.0.
+        min_recession_days : int, optional
+            Minimum number of consecutive declining days required for a
+            segment to be included in the analysis. Default 3.
+        """
         self.Q = np.asarray(Q, dtype=float)
         self.dt = dt
         self.min_recession_days = int(min_recession_days)
