@@ -279,16 +279,26 @@ def _nash_cascade(q, N, K, dt=1.0):
     alpha = np.exp(-dt / K)          # exact decay factor over one timestep
     beta  = K * (1.0 - alpha)        # input gain:  K*(1 - exp(-dt/K))
 
+    # NaN in q (missing-forcing days) must not corrupt routing state.
+    # Treat missing land-surface inflow as zero (channel drains normally);
+    # restore NaN in the output so those days are excluded from scoring.
+    # Caveat: substituting 0 drains the routing reservoir during long NaN
+    # gaps; if the gap abuts the scoring window and K is large, early scored
+    # discharge will be biased low.
+    nan_mask = np.isnan(q)
+    q_safe   = np.where(nan_mask, 0.0, q)
+
     S   = np.zeros(N)                # initial storage in each reservoir [mm]
     out = np.empty_like(q)
 
-    for t in range(len(q)):
-        inflow = q[t]
+    for t in range(len(q_safe)):
+        inflow = q_safe[t]
         for i in range(N):
             S[i]   = alpha * S[i] + beta * inflow
             inflow = S[i] / K        # outflow from reservoir i → inflow to i+1
         out[t] = inflow              # outflow from the final reservoir
 
+    out[nan_mask] = np.nan
     return out
 
 
