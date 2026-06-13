@@ -813,8 +813,8 @@ class Buckets(object):
         """
         Compute a single ET scale factor to close the long-term water balance.
 
-        Computes scale = sum(P - Q_obs) / sum(ET_raw) over all days with
-        observed discharge and stores it as self.global_et_multiplier.
+        Computes scale = sum(P - Q_obs) / sum(ET_raw) over all days where
+        P, ET, and Q_obs are all finite, and stores it as self.global_et_multiplier.
         Unlike compute_ET_multiplier(), which fits one multiplier per water
         year, this uses a single ratio for the full record and does not
         overfit interannual variability. Appropriate when enforce_water_balance
@@ -825,7 +825,11 @@ class Buckets(object):
         else:
             _raw_ET = np.asarray(self.evapotranspiration_Chang2019())
 
-        mask   = self.hydrodata['Specific Discharge [mm/day]'].notna()
+        # Mask to days where all three water-balance terms are finite so that
+        # P_sum, ET_sum, and Q_sum are computed over the same day-set.
+        mask = (self.hydrodata['Specific Discharge [mm/day]'].notna()
+                & self.hydrodata['Precipitation [mm/day]'].notna()
+                & np.isfinite(_raw_ET))
         P_sum  = float(self.hydrodata.loc[mask, 'Precipitation [mm/day]'].sum())
         Q_sum  = float(self.hydrodata.loc[mask, 'Specific Discharge [mm/day]'].sum())
         ET_sum = float(_raw_ET[mask].sum())
@@ -1148,6 +1152,26 @@ class Buckets(object):
             # This should be a different variable and therefore not
             # modify the value of "time_step" by reference.
             self._timestep_i += 1
+
+        # Skip timesteps with missing forcing: leave reservoir states unchanged
+        # and record NaN output so the scoring mask excludes these days.
+        _P = self.hydrodata['Precipitation [mm/day]'][time_step]
+        _skip = not np.isfinite(_P)
+        if not _skip and self.has_snowpack:
+            _skip = not np.isfinite(
+                self.hydrodata['Mean Temperature [C]'][time_step])
+        if _skip:
+            self.hydrodata.at[time_step,
+                              'Specific Discharge (modeled) [mm/day]'] = np.nan
+            if self.has_snowpack:
+                self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = (
+                    self.snowpack.Hwater)
+            self.hydrodata.at[time_step,
+                              'Subsurface storage (modeled total) [mm]'] = (
+                np.sum([res.Hwater for res in self.reservoirs])
+                + np.sum([res.tile_res.Hwater for res in self.reservoirs
+                          if res.tile_res is not None]))
+            return
 
         excess_dd = self._compute_snowpack(time_step) if self.has_snowpack else 0.0
         f0 = self._update_fgi(time_step, excess_dd)
