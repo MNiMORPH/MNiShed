@@ -308,14 +308,14 @@ flux attributed to that layer as ``Q_ref``:
 
     for i, res in enumerate(buckets.reservoirs):
         mrt = res.mean_residence_time(Q_ref=Q_mean)
-        print(f"Reservoir {i}: τ={res.t_efold:.1f}d, b={res.recession_exponent:.3f}, "
+        print(f"Reservoir {i}: τ={res.t_recession:.1f}d, b={res.recession_exponent:.3f}, "
               f"MRT={mrt:.1f}d  (Q_ref={Q_mean:.3f} mm/d)")
 
 MRT should be reported alongside τ and *b* whenever comparing calibrated
 models across experiments or basins.  τ alone is misleading when *b* > 1,
 because the optimizer can trade τ against *b* while holding MRT nearly
-constant.  See :ref:`mean-residence-time` in :doc:`model_description` for
-the derivation and interpretation.
+constant.  See :ref:`Mean Residence Time <mean-residence-time>` in
+:doc:`model_description` for the derivation and interpretation.
 
 See Also
 --------
@@ -323,5 +323,5 @@ See Also
 - :doc:`configuration` — full YAML reference
 - :doc:`recession_analysis` — Brutsaert & Nieber theory and API
 - :doc:`calibration` — scoring functions, AIC, and metric details
-- :class:`~hydroravens.suggest_priors` — full API reference
+- :func:`~hydroravens.suggest_priors` — full API reference
 - :class:`~hydroravens.HydrographSeparation` — timescale decomposition

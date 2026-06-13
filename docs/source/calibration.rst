@@ -17,12 +17,14 @@ run_and_score()
 ---------------
 
 .. autofunction:: hydroravens.run_and_score
+   :no-index:
 
 CalibResult
 -----------
 
 .. autoclass:: hydroravens.CalibResult
    :no-inherited-members:
+   :no-index:
 
 The fields of ``CalibResult`` are:
 
