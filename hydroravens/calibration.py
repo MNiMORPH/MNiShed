@@ -457,7 +457,7 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         ``'KGE_logKGE'`` returns 0.5*KGE + 0.5*logKGE, balancing
         peak and low-flow performance (Yilmaz et al. 2008).
         ``'KGE_logKGE_logFDC_BFI'`` adds a BFI bias-ratio score
-        (1 - |BFI_mod/BFI_obs - 1|) as a fourth equal-weight component.
+        (1 - abs(BFI_mod/BFI_obs - 1)) as a fourth equal-weight component.
     routing_N : int, optional
         Number of identical linear reservoirs in the Nash cascade used
         for channel routing (shape parameter of the gamma IUH).
@@ -490,18 +490,11 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     Returns
     -------
     CalibResult
-        Named tuple with fields:
-        score        : goodness-of-fit (higher is better)
-        aic          : AIC on log flows (lower is better; compare across
-                       models with different reservoir counts)
-        bfi_obs      : observed baseflow index (Eckhardt filter)
-        bfi_mod      : modelled baseflow index (Eckhardt filter)
-        fdc_obs      : pd.Series, observed FDC indexed by exceedance %
-        fdc_mod      : pd.Series, modelled FDC indexed by exceedance %
-        final_states : dict suitable for use as initial_states next decade
-        buckets      : Buckets object after the final run
-
-        All scalar fields are np.nan if the scoring window is empty.
+        Named tuple with fields ``score``, ``aic``, ``bfi_obs``,
+        ``bfi_mod``, ``fdc_obs``, ``fdc_mod``, ``final_states``,
+        and ``buckets``.  See :class:`CalibResult` for full field
+        descriptions.  All scalar fields are ``np.nan`` if the scoring
+        window contains no valid overlapping data.
 
     Notes
     -----
