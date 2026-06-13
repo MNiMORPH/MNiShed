@@ -27,7 +27,7 @@ driver:
 
 parameters:
 
-  log__t_efold_shallow:
+  log__t_recession_shallow:
     description: "log10 shallow/interflow e-folding time [days]"
     lower:   0.3
     upper:   2.0
@@ -35,7 +35,7 @@ parameters:
     fixed:   1.2
     active:  true
 
-  log__t_efold_soil:
+  log__t_recession_soil:
     description: "log10 soil-zone e-folding time [days]"
     lower:   1.0
     upper:   2.7
@@ -43,7 +43,7 @@ parameters:
     fixed:   1.8
     active:  true
 
-  log__t_efold_karst:
+  log__t_recession_karst:
     description: "log10 karst/bedrock e-folding time [days]"
     lower:   2.5
     upper:   4.5

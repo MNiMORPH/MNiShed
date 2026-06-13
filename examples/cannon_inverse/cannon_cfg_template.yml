@@ -21,7 +21,7 @@ general:
   spin_up_cycles: 0   # driver.py performs spin-up after setting calibrated parameters
 
 reservoirs:
-  e_folding_residence_times__days:
+  recession_timescales__days:
     - 16      # shallow   (placeholder; overridden by driver)
     - 200     # soil zone (placeholder; overridden by driver)
     - 3650    # karst     (placeholder; overridden by driver)
