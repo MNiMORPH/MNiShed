@@ -1155,8 +1155,9 @@ class Buckets(object):
 
         # Skip timesteps with missing forcing: leave reservoir states unchanged
         # and record NaN output so the scoring mask excludes these days.
-        _P = self.hydrodata['Precipitation [mm/day]'][time_step]
-        _skip = not np.isfinite(_P)
+        _P  = self.hydrodata['Precipitation [mm/day]'][time_step]
+        _ET = self.hydrodata['ET for model [mm/day]'][time_step]
+        _skip = not np.isfinite(_P) or not np.isfinite(_ET)
         if not _skip and self.has_snowpack:
             _skip = not np.isfinite(
                 self.hydrodata['Mean Temperature [C]'][time_step])
@@ -1273,9 +1274,10 @@ class Buckets(object):
         quadratic  = C * (-415.85 + 32.24 * Tef - 0.43 * Tef**2)
         power_law  = 16. * C * (10. * Tef / self.Chang_I) ** self.Chang_a
 
-        ET0 = np.where(Tef > 26,  quadratic,
-                       np.where(Tef > 0,   power_law,
-                                0.))
+        ET0 = np.where(np.isnan(Tef), np.nan,
+               np.where(Tef > 26,   quadratic,
+               np.where(Tef > 0,    power_law,
+                                    0.)))
         return ET0
 
     def run(self):
