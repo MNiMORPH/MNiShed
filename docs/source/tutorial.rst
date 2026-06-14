@@ -151,7 +151,7 @@ Create a YAML configuration file. Start from the snippet produced by
         enforce_water_balance: global
 
     reservoirs:
-        e_folding_residence_times__days:
+        recession_timescales__days:
             - 28.4   # soil
             - 847.3  # karst
             - 10000  # deep — placeholder; calibrate or fix

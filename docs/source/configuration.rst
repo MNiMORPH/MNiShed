@@ -207,7 +207,7 @@ All lists must have the same length.
    * - Option
      - Type
      - Description
-   * - ``e_folding_residence_times__days``
+   * - ``recession_timescales__days``
      - list of floats
      - Drainage time constant (days) for each reservoir
    * - ``exfiltration_fractions``
@@ -254,7 +254,7 @@ Example:
 .. code-block:: yaml
 
     reservoirs:
-        e_folding_residence_times__days:
+        recession_timescales__days:
             - 16      # Interflow: fast lateral drainage, days to weeks
             - 200     # Soil zone: seasonal storage, months
             - 3650    # Groundwater: multi-year storage
@@ -498,7 +498,7 @@ Complete Example
         spin_up_cycles: null  # auto: ceil(tau_max / record_length)
 
     reservoirs:
-        e_folding_residence_times__days: [16, 2000]
+        recession_timescales__days: [16, 2000]
         exfiltration_fractions: [0.8, 1.0]
         maximum_effective_depths__mm: [.inf, .inf]
 
@@ -528,7 +528,7 @@ sets. Actual values depend strongly on the specific catchment.
 .. code-block:: yaml
 
     reservoirs:
-        e_folding_residence_times__days: [8, 1500]
+        recession_timescales__days: [8, 1500]
         exfiltration_fractions: [0.7, 1.0]
     
     snowmelt:
@@ -542,7 +542,7 @@ sets. Actual values depend strongly on the specific catchment.
 .. code-block:: yaml
 
     reservoirs:
-        e_folding_residence_times__days: [25, 3000]
+        recession_timescales__days: [25, 3000]
         exfiltration_fractions: [0.9, 1.0]
     
     catchment:
@@ -553,7 +553,7 @@ sets. Actual values depend strongly on the specific catchment.
 .. code-block:: yaml
 
     reservoirs:
-        e_folding_residence_times__days: [3, 500]
+        recession_timescales__days: [3, 500]
         exfiltration_fractions: [0.5, 1.0]
     
     snowmelt:
