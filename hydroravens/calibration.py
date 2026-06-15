@@ -501,7 +501,9 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     When ``start`` is provided, the function operates in decade mode:
 
     * ``enforce_water_balance='global'`` closes the water balance over
-      ``[start, end]`` only, not the full record.
+      the full record (computed once at initialization), not re-fitted to
+      the decade window.  Re-fitting would assume ΔS = 0 over the decade,
+      which is incorrect for transitional wet/dry decades.
     * Spin-up runs only the pre-decade data (record start through the day
       before ``start``), so reservoir states at the beginning of the decade
       reflect pre-decade climatology rather than an arbitrary end-of-record
@@ -577,15 +579,14 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         if any_tile:
             k += 1  # tau_tile counted once across all tiled reservoirs
 
-    if et_scale is not None and (b.use_et_water_stress or b.use_et_reservoir_draw):
+    if et_scale is not None:
         if et_scale != 1.0 and b.enforce_water_balance != 'none':
             warnings.warn(
                 f"et_scale={et_scale:.4g} with enforce_water_balance="
-                f"'{b.enforce_water_balance}' and dynamic ET active: "
-                "the ET multiplier is computed assuming et_scale=1, so a "
-                "non-unity et_scale amplifies that correction and breaks "
-                "the water balance. Set enforce_water_balance='none' when "
-                "calibrating et_scale.",
+                f"'{b.enforce_water_balance}': et_scale is applied on top of "
+                "the water-balance multiplier, so exact WB closure is not "
+                "guaranteed. Set enforce_water_balance='none' to use et_scale "
+                "as the primary water-balance parameter.",
                 UserWarning, stacklevel=2,
             )
         b.et_scale = et_scale
@@ -659,10 +660,11 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                               _steady_state_depths(b.reservoirs, mean_q_eff)):
                 res.Hwater = h
 
-    # --- Decade mode: recompute ET water balance over [start, end] only ---
-    if start is not None and b.enforce_water_balance == 'global':
-        b.compute_global_ET_multiplier(start=start, end=end)
-        b.compute_ET()
+    # Decade mode: the global ET multiplier is computed once from the full
+    # record during b.initialize() above.  It is NOT recomputed for the
+    # decade window here; doing so would assume ΔS = 0 over the decade,
+    # which is wrong for transitional decades (e.g. wet→Dust Bowl) where
+    # reservoirs are net draining and Q_obs is elevated by that drainage.
 
     # --- Spin up, then final scored run ---
     if spin_up_cycles is None:
