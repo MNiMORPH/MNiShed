@@ -371,6 +371,7 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                   direct_runoff_fraction=None, baseflow_Q=None,
                   modules=None,
                   initial_states=None,
+                  post_spinup_states=None, post_spinup_k=0,
                   start=None, end=None, spin_up_cycles=None,
                   metric='KGE', routing_N=2, routing_K=None,
                   enforce_water_balance='water-year'):
@@ -436,6 +437,18 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         When None (default), reservoirs are initialised to their
         analytical steady-state depths before spin-up (see
         :func:`_steady_state_depths`).
+    post_spinup_states : dict, optional
+        Reservoir water depths injected *after* spin-up completes and
+        *before* the scored run begins.  Same format as ``initial_states``
+        but only the ``'reservoirs'`` key is used; individual entries may
+        be ``None`` to leave that reservoir at its spin-up end state.
+        Intended for calibrating decade-specific initial storage (e.g.
+        ``log__H0_deep``) when the spin-up equilibrium is poorly
+        constrained by sparse pre-decade forcing.  Only applied in decade
+        mode (``start`` is not None); ignored in full-record mode.
+    post_spinup_k : int, optional
+        Number of free parameters contributing to ``post_spinup_states``
+        (for AIC counting).  Default 0.
     start : str or datetime-like, optional
         Start of the scoring window (inclusive). Score, AIC, BFI, and FDC
         are all computed within this window. Spin-up still uses the full
@@ -640,6 +653,8 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     if routing_K is not None:
         k += 1
 
+    k += post_spinup_k
+
     # --- Set initial storage states ---
     if initial_states is not None:
         # Analytical or chained initial conditions supplied by the caller.
@@ -677,6 +692,14 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                           - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
         for _ in range(spin_up_cycles):
             b.run(end=pre_decade_end)
+        # Inject post-spin-up reservoir depths if provided (e.g. log__H0_deep).
+        # Allows calibrating decade-specific initial storage independently of
+        # the spin-up equilibrium, which may be biased by sparse pre-decade
+        # forcing or by candidate parameters far from the decade optimum.
+        if post_spinup_states is not None:
+            for i, h in enumerate(post_spinup_states.get('reservoirs', [])):
+                if h is not None and i < len(b.reservoirs):
+                    b.reservoirs[i].Hwater = h
         b.run(start=start, end=end)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
