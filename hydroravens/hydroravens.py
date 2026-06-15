@@ -672,8 +672,8 @@ class Buckets(object):
                 UserWarning, stacklevel=2,
             )
             self.use_et_water_stress = False
-        self.et_scale = 1.0   # global ET multiplier; calibrated when et_water_stress or
-        #                       et_reservoir_draw (with enforce_water_balance='none') is on
+        self.et_scale = 1.0   # universal ET multiplier; default 1.0 (no-op); override via
+        #                       run_and_score(et_scale=) or as a free calibration parameter
         # Fraction of ET_pot drawn from reservoir 0 (shallow); 1-et_alpha from reservoir 1.
         # Read from general: et_alpha in config YAML; override via run_and_score(et_alpha=).
         self.et_alpha = self.cfg['general'].get('et_alpha', 1.0)
@@ -900,20 +900,21 @@ class Buckets(object):
         Obtains raw daily ET from the input data file or the Thornthwaite–Chang
         2019 equation (see evapotranspiration_Chang2019()). Five modes:
 
-        1. et_water_stress=True: multiply raw ET by self.et_scale (a single
-           global calibration parameter, analogous to PDD_melt_factor for snow).
-           The per-water-year water-balance multiplier is bypassed because the
-           dynamic stress factor applied in _et_stress_factor() at each time step
-           would make the pre-computed per-year correction inconsistent.
-        2. enforce_water_balance='water-year' (default, stress off): raw ET is
-           multiplied by a per-water-year multiplier so P - Q - ET = 0 each year.
-        3. enforce_water_balance='global' (stress off): raw ET multiplied by a
-           single full-record multiplier from sum(P - Q_obs) / sum(ET_raw).
-        4. enforce_water_balance='none' (stress off): raw ET used directly.
-        5. et_reservoir_draw=True + enforce_water_balance='none': same as mode 1
-           (et_scale applied), but ET is drawn from reservoirs after the cascade
-           rather than pre-subtracted from precipitation. With 'global' WB, falls
-           through to mode 3.
+        et_scale (default 1.0) is applied as a universal final multiplier in
+        every mode.  Four modes determine the base ET before et_scale:
+
+        1. et_water_stress=True (or et_reservoir_draw + 'none'): base = raw ET.
+           et_scale is then the sole WB-closure mechanism.
+        2. enforce_water_balance='water-year' (stress off): base = raw ET ×
+           per-water-year multiplier so P - Q - ET ≈ 0 each year (before et_scale).
+        3. enforce_water_balance='global' (stress off): base = raw ET × single
+           full-record multiplier from sum(P - Q_obs) / sum(ET_raw).
+        4. enforce_water_balance='none' (stress off): base = raw ET.
+
+        In modes 2–4, et_scale=1.0 (the default) leaves existing behaviour
+        unchanged.  Set et_scale ≠ 1 to add a calibrated offset from the
+        water-balance multiplier (e.g. to capture decade-specific land-cover
+        or climate sensitivity); this relaxes exact WB closure.
 
         The result is stored as 'ET for model [mm/day]' in self.hydrodata.
         """
@@ -927,13 +928,11 @@ class Buckets(object):
 
         if self.use_et_water_stress or (self.use_et_reservoir_draw and
                                          self.enforce_water_balance == 'none'):
-            # et_scale is the sole water-balance closure mechanism in both
-            # et_water_stress mode and et_reservoir_draw without WB enforcement.
-            self.hydrodata['ET for model [mm/day]'] = (
-                np.asarray(_raw_ET) * self.et_scale)
+            # In stress modes, et_scale is the sole WB-closure mechanism;
+            # no mode-specific multiplier is applied before it.
+            _et_mode = np.asarray(_raw_ET)
         elif self.enforce_water_balance == 'global':
-            self.hydrodata['ET for model [mm/day]'] = (
-                np.asarray(_raw_ET) * self.global_et_multiplier)
+            _et_mode = np.asarray(_raw_ET) * self.global_et_multiplier
         elif self.enforce_water_balance == 'water-year':
             # Merge per-water-year multiplier into hydrodata, then apply.
             # Drop any previous 'ET multiplier' column first so that calling
@@ -958,10 +957,16 @@ class Buckets(object):
                 )
                 self.hydrodata['ET multiplier'] = (
                     self.hydrodata['ET multiplier'].fillna(1.0))
-            self.hydrodata['ET for model [mm/day]'] = (
-                np.asarray(_raw_ET) * self.hydrodata['ET multiplier'].to_numpy())
+            _et_mode = np.asarray(_raw_ET) * self.hydrodata['ET multiplier'].to_numpy()
         else:
-            self.hydrodata['ET for model [mm/day]'] = np.asarray(_raw_ET)
+            _et_mode = np.asarray(_raw_ET)
+
+        # et_scale (default 1.0) is a universal calibration multiplier applied
+        # after the mode-specific water-balance correction.  Under stress modes
+        # it is the sole correction (mode factor = raw ET); under other modes it
+        # provides an additional degree of freedom — e.g. for decade-specific
+        # land-cover or climate sensitivity — at the cost of exact WB closure.
+        self.hydrodata['ET for model [mm/day]'] = _et_mode * self.et_scale
 
     def _et_stress_factor(self):
         """
