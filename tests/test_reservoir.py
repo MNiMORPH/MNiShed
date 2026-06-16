@@ -160,3 +160,93 @@ def test_tile_drain_increases_discharge():
     res_tile.discharge(dt=1.0)
 
     assert res_tile.H_discharge > res_plain.H_discharge
+
+
+# --- Junction type tests ---
+
+def test_leakance_invalid_without_R():
+    """leakance junction requires leakance_R."""
+    with pytest.raises(ValueError):
+        Reservoir(t_recession=10.0, junction_type='leakance')
+
+
+def test_invalid_junction_type_raises():
+    with pytest.raises(ValueError):
+        Reservoir(t_recession=10.0, junction_type='magic')
+
+
+def test_leakance_all_to_stream_when_reservoirs_equal():
+    """When H_this == H_next, Q_leak = 0: all drainage goes to stream."""
+    res = Reservoir(t_recession=10.0, leakance_R=100.0,
+                    junction_type='leakance', H0=50.0)
+    res.discharge(dt=1.0, H_next=50.0)
+    assert res.H_infiltrated == pytest.approx(0.0, abs=1e-12)
+    assert res.H_exfiltrated == pytest.approx(res.H_discharge, abs=1e-12)
+
+
+def test_leakance_all_infiltrates_when_head_difference_large():
+    """When head difference / R >> dH, essentially all drainage is leakance."""
+    H0 = 50.0
+    res = Reservoir(t_recession=1000.0, leakance_R=0.01,
+                    junction_type='leakance', H0=H0)
+    res.discharge(dt=1.0, H_next=0.0)
+    # Q_leak = (50 - 0) / 0.01 = 5000 >> dH; should be capped at dH
+    assert res.H_exfiltrated == pytest.approx(0.0, abs=1e-9)
+    assert res.H_infiltrated == pytest.approx(
+        res.H_infiltrated + res.H_exfiltrated, rel=1e-9)
+
+
+def test_leakance_water_balance():
+    """H_before == H_after + H_exfiltrated + H_infiltrated for leakance."""
+    res = Reservoir(t_recession=10.0, leakance_R=50.0,
+                    junction_type='leakance', H0=80.0)
+    H_before = res.Hwater
+    res.discharge(dt=1.0, H_next=20.0)
+    assert H_before == pytest.approx(
+        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9)
+
+
+def test_leakance_more_to_next_when_head_difference_larger():
+    """Larger head difference → more leakance to next reservoir."""
+    res_small = Reservoir(t_recession=10.0, leakance_R=100.0,
+                          junction_type='leakance', H0=80.0)
+    res_small.discharge(dt=1.0, H_next=70.0)
+
+    res_large = Reservoir(t_recession=10.0, leakance_R=100.0,
+                          junction_type='leakance', H0=80.0)
+    res_large.discharge(dt=1.0, H_next=10.0)
+
+    assert res_large.H_infiltrated > res_small.H_infiltrated
+
+
+def test_threshold_no_drainage_below_threshold():
+    """Below H_threshold, no water drains."""
+    res = Reservoir(t_recession=10.0, junction_type='threshold',
+                    H_threshold=100.0, H0=50.0)
+    res.discharge(dt=1.0)
+    assert res.H_exfiltrated == pytest.approx(0.0, abs=1e-12)
+    assert res.Hwater == pytest.approx(50.0, abs=1e-12)
+
+
+def test_threshold_normal_drainage_above_threshold():
+    """Above H_threshold, only the excess drains (dead storage preserved)."""
+    H_threshold = 20.0
+    H0 = 70.0
+    tau = 10.0
+    res = Reservoir(t_recession=tau, junction_type='threshold',
+                    H_threshold=H_threshold, H0=H0)
+    res.discharge(dt=1.0)
+    H_eff = H0 - H_threshold
+    expected_dH = H_eff * (1 - np.exp(-1.0 / tau))
+    assert res.H_exfiltrated == pytest.approx(expected_dH, rel=1e-9)
+    assert res.Hwater == pytest.approx(H0 - expected_dH, rel=1e-9)
+
+
+def test_threshold_water_balance():
+    """Water balance holds for threshold junction."""
+    res = Reservoir(t_recession=10.0, junction_type='threshold',
+                    H_threshold=30.0, H0=80.0)
+    H_before = res.Hwater
+    res.discharge(dt=1.0)
+    assert H_before == pytest.approx(
+        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9)
