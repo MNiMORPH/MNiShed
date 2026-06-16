@@ -4,7 +4,7 @@ Unit tests for the Reservoir class.
 
 import numpy as np
 import pytest
-from hydroravens import Reservoir
+from mnished import Reservoir
 
 
 def test_recharge_adds_water():

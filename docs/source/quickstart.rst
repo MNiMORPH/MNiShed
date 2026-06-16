@@ -1,12 +1,12 @@
 Quick Start
 ===========
 
-This guide will get you running your first HydroRaVENS model.
+This guide will get you running your first MNiShed model.
 
 Prepare Your Data
 ~~~~~~~~~~~~~~~~~
 
-HydroRaVENS requires daily time series data in CSV format. Required and optional columns:
+MNiShed requires daily time series data in CSV format. Required and optional columns:
 
 .. list-table:: Input CSV Columns
    :widths: 35 15 40
@@ -52,7 +52,7 @@ Example input (first few rows):
 Create a Configuration File
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-HydroRaVENS is configured through a YAML file (``config.yml``).  The example
+MNiShed is configured through a YAML file (``config.yml``).  The example
 below uses a three-reservoir structure (soil → intermediate → deep), which
 is a recommended starting point for temperate catchments.  See
 :doc:`configuration` for all available options and :doc:`calibration` for
@@ -118,9 +118,9 @@ Run the Model
 
 .. code-block:: python
 
-    import hydroravens
+    import mnished
 
-    model = hydroravens.Buckets()
+    model = mnished.Buckets()
     model.initialize('config.yml')
     model.run()
     model.compute_NSE(verbose=True)
@@ -130,7 +130,7 @@ Run the Model
 
 .. code-block:: bash
 
-    hydroravens -y config.yml
+    mnished -y config.yml
 
 Adjust Parameters
 ~~~~~~~~~~~~~~~~~
@@ -144,7 +144,7 @@ Model performance depends on the reservoir parameters:
   * Intermediate (shallow GW / outwash): weeks to months
   * Deep groundwater: years to centuries
 
-  Use :func:`~hydroravens.suggest_priors` to estimate data-driven starting
+  Use :func:`~mnished.suggest_priors` to estimate data-driven starting
   points from the observed discharge record before manual adjustment.
 
 **Exfiltration fractions** (``exfiltration_fractions``)
@@ -157,7 +157,7 @@ Model performance depends on the reservoir parameters:
 **Recession exponents** (``recession_exponents``)
   Controls the nonlinearity of storage–discharge in each reservoir.
   :math:`b = 1` is a standard linear reservoir; :math:`b > 1` gives a concave
-  (faster-draining-when-full) response.  Use :class:`~hydroravens.BrutsaertNieber`
+  (faster-draining-when-full) response.  Use :class:`~mnished.BrutsaertNieber`
   to estimate the appropriate exponent from observed streamflow recession.
 
   * Soil zone: calibrate (typical 2–6; higher values for tile-drained basins)
@@ -172,7 +172,7 @@ Model performance depends on the reservoir parameters:
 Next Steps
 ~~~~~~~~~~
 
-* Use :func:`~hydroravens.suggest_priors` for data-driven parameter starting points
+* Use :func:`~mnished.suggest_priors` for data-driven parameter starting points
 * Read :doc:`model_description` for the theory behind each component
 * Read :doc:`calibration` for guidance on metric selection, AIC, and parameter sets
 * Explore :doc:`configuration` for all configuration options

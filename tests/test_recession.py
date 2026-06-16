@@ -6,7 +6,7 @@ import warnings
 
 import numpy as np
 import pytest
-from hydroravens import BrutsaertNieber
+from mnished import BrutsaertNieber
 
 
 def _linear_recession(Q0, a, n_steps, dt=1.0):

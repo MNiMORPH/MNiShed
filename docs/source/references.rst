@@ -4,10 +4,10 @@ References
 Model Development
 ~~~~~~~~~~~~~~~~~
 
-The HydroRaVENS model is described on the Community Surface Dynamics Modeling
+The MNiShed model is described on the Community Surface Dynamics Modeling
 System (CSDMS) model page:
 
-* `CSDMS Model Page: HydroRaVENS <https://csdms.colorado.edu/wiki/Model:HydroRaVENS>`_
+* `CSDMS Model Page: MNiShed <https://csdms.colorado.edu/wiki/Model:MNiShed>`_
 
 Snowpack and Rain-on-Snow
 ~~~~~~~~~~~~~~~~~~~~~~~~~

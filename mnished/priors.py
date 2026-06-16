@@ -1,10 +1,10 @@
 """
-hydroravens.priors
+mnished.priors
 ~~~~~~~~~~~~~~~~~~
-Data-driven prior estimation for HydroRaVENS calibration.
+Data-driven prior estimation for MNiShed calibration.
 
-:func:`suggest_priors` wraps :class:`~hydroravens.BrutsaertNieber` and
-:class:`~hydroravens.HydrographSeparation` to produce a coherent set of
+:func:`suggest_priors` wraps :class:`~mnished.BrutsaertNieber` and
+:class:`~mnished.HydrographSeparation` to produce a coherent set of
 parameter starting points from an observed discharge record, before any
 model run or calibration is attempted.
 
@@ -20,7 +20,7 @@ prints a human-readable summary.
 Example
 -------
 >>> import pandas as pd
->>> from hydroravens import suggest_priors
+>>> from mnished import suggest_priors
 >>> df = pd.read_csv('input.csv', parse_dates=['Date'])
 >>> Q = df['Specific Discharge [mm/day]'].values
 >>> P = df['Precipitation [mm/day]'].values
@@ -36,14 +36,14 @@ from .recession import BrutsaertNieber
 from .hydrograph_separation import HydrographSeparation
 
 # Theoretical Brutsaert & Nieber (1977) long-time baseflow recession exponent
-# (b_HR in HydroRaVENS notation, corresponding to B-N slope n ≈ 1.55).
+# (b_HR in MNiShed notation, corresponding to B-N slope n ≈ 1.55).
 # Appropriate as a fixed prior for the slow (karst/groundwater) reservoir.
 _B_KARST_THEORETICAL = 2.203
 
 
 class Priors:
     """
-    Data-driven parameter priors for HydroRaVENS.
+    Data-driven parameter priors for MNiShed.
 
     Produced by :func:`suggest_priors`; not intended to be instantiated
     directly.
@@ -65,7 +65,7 @@ class Priors:
     log_t_recession_bounds : dict
         Calibration bounds in log10(days) for each ``log__t_recession_*``
         parameter, as returned by
-        :meth:`~hydroravens.HydrographSeparation.get_parameter_priors`.
+        :meth:`~mnished.HydrographSeparation.get_parameter_priors`.
     bn : BrutsaertNieber
         Fitted Brutsaert & Nieber object; inspect ``bn.n_``, ``bn.a_``,
         or call ``bn.plot()`` for the recession cloud.
@@ -117,7 +117,7 @@ class Priors:
         labels = (['soil'] + ['karst'] + ['deep'] * (n - 2))[:n]
 
         print("=" * 60)
-        print("HydroRaVENS data-driven priors")
+        print("MNiShed data-driven priors")
         print("=" * 60)
 
         print("\nE-folding residence times (fastest → slowest):")
@@ -209,10 +209,10 @@ class Priors:
 def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
                    min_recession_days=3):
     """
-    Estimate HydroRaVENS parameter priors from an observed discharge record.
+    Estimate MNiShed parameter priors from an observed discharge record.
 
-    Combines :class:`~hydroravens.BrutsaertNieber` recession analysis with
-    :class:`~hydroravens.HydrographSeparation` to produce timescale
+    Combines :class:`~mnished.BrutsaertNieber` recession analysis with
+    :class:`~mnished.HydrographSeparation` to produce timescale
     estimates, recession exponents, and initial storage depths without
     running any model.
 
@@ -232,7 +232,7 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
         Timestep [days]. Default ``1.0``.
     min_recession_days : int, optional
         Minimum recession length passed to
-        :class:`~hydroravens.BrutsaertNieber`. Default ``3``.
+        :class:`~mnished.BrutsaertNieber`. Default ``3``.
 
     Returns
     -------
@@ -252,7 +252,7 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
     * *Deep reservoir* (if present): b = 1.0 (linear).
 
     **Timescales** come from the spectral + recession decomposition in
-    :class:`~hydroravens.HydrographSeparation`.  ``None`` entries in
+    :class:`~mnished.HydrographSeparation`.  ``None`` entries in
     ``Priors.t_recession`` mean the timescale could not be resolved from the
     data; fall back to calibration defaults in that case.
 
@@ -265,7 +265,7 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
     Examples
     --------
     >>> import pandas as pd
-    >>> from hydroravens import suggest_priors
+    >>> from mnished import suggest_priors
     >>> df = pd.read_csv('input.csv', parse_dates=['Date'])
     >>> Q  = df['Specific Discharge [mm/day]'].values
     >>> P  = df['Precipitation [mm/day]'].values

@@ -1,4 +1,4 @@
-HydroRaVENS Documentation
+MNiShed Documentation
 ==========================
 
 .. image:: https://zenodo.org/badge/199317220.svg
@@ -7,7 +7,7 @@ HydroRaVENS Documentation
 
 A simple, flexible reservoir-based hydrological model for water balance simulation and streamflow prediction.
 
-**HydroRaVENS** (Rain and Variable Evapotranspiration, Nieve, and Streamflow) is a
+**MNiShed** (Rain and Variable Evapotranspiration, Nieve, and Streamflow) is a
 conceptual daily-timestep model that routes precipitation through an optional snowpack
 and a cascade of linear reservoirs. Ideal for ungauged basins, climate impact studies,
 and educational applications.
@@ -63,9 +63,9 @@ Quick Example
 
 .. code-block:: python
 
-    import hydroravens
+    import mnished
 
-    model = hydroravens.Buckets()
+    model = mnished.Buckets()
     model.initialize('config.yml')
     model.run()
     nse = model.compute_NSE(verbose=True)
@@ -75,22 +75,22 @@ Quick Example
 
 .. code-block:: bash
 
-    hydroravens -y config.yml
+    mnished -y config.yml
 
 Getting Help
 ~~~~~~~~~~~~
 
-* **Report bugs:** `GitHub Issues <https://github.com/MNiMORPH/hydroRaVENS/issues>`_
-* **Discuss:** `GitHub Discussions <https://github.com/MNiMORPH/hydroRaVENS/discussions>`_
-* **Learn more:** `CSDMS Model Page <https://csdms.colorado.edu/wiki/Model:HydroRaVENS>`_
+* **Report bugs:** `GitHub Issues <https://github.com/MNiMORPH/MNiShed/issues>`_
+* **Discuss:** `GitHub Discussions <https://github.com/MNiMORPH/MNiShed/discussions>`_
+* **Learn more:** `CSDMS Model Page <https://csdms.colorado.edu/wiki/Model:MNiShed>`_
 
 About
 ~~~~~
 
-HydroRaVENS is developed and maintained by the `MNiMORPH group <https://github.com/MNiMORPH>`_.
+MNiShed is developed and maintained by the `MNiMORPH group <https://github.com/MNiMORPH>`_.
 It is published under the GNU General Public License v3.0.
 
 **Citation:**
 
-If you use HydroRaVENS in your research, please cite it using the information in
+If you use MNiShed in your research, please cite it using the information in
 ``CITATION.cff`` at the repository root, or via the Zenodo DOI badge above.

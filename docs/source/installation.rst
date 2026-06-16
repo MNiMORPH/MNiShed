@@ -13,7 +13,7 @@ Requirements
 From PyPI
 ~~~~~~~~~
 
-The easiest way to install HydroRaVENS is via pip:
+The easiest way to install MNiShed is via pip:
 
 .. code-block:: bash
 
@@ -26,8 +26,8 @@ For development or contributing to the project:
 
 .. code-block:: bash
 
-    git clone https://github.com/MNiMORPH/hydroRaVENS.git
-    cd hydroRaVENS
+    git clone https://github.com/MNiMORPH/MNiShed.git
+    cd MNiShed
     pip install -e .
 
 This installs the package in "editable" mode, so changes to the source code are 
@@ -53,11 +53,11 @@ To verify your installation:
 
 .. code-block:: python
 
-    >>> import hydroravens
-    >>> print(hydroravens.__version__)
+    >>> import mnished
+    >>> print(mnished.__version__)
     
     >>> # Create and initialize a model
-    >>> model = hydroravens.Buckets()
+    >>> model = mnished.Buckets()
     >>> print("Installation successful!")
 
 Troubleshooting

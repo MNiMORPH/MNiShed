@@ -4,7 +4,7 @@ Model Description
 Theory & Mathematical Formulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-HydroRaVENS is a lumped, daily-timestep conceptual hydrological model. Water 
+MNiShed is a lumped, daily-timestep conceptual hydrological model. Water 
 moves through three sequential processes each day: optional snowpack accumulation/melt, 
 routing through cascading linear reservoirs, and evapotranspiration.
 
@@ -426,7 +426,7 @@ consistent with the standard result for exponential decay. For
 operating storage depths well above :math:`H_{\text{ref}}`.
 
 MRT is implemented as
-:meth:`~hydroravens.hydroravens.Reservoir.mean_residence_time`::
+:meth:`~mnished.mnished.Reservoir.mean_residence_time`::
 
     mrt = reservoir.mean_residence_time(Q_ref=0.5)  # [mm/day] → [days]
 
@@ -660,7 +660,7 @@ Model Skill Evaluation
 ~~~~~~~~~~~~~~~~~~~~~~
 
 Several goodness-of-fit metrics are available via the ``metric`` argument
-of :func:`~hydroravens.calibration.run_and_score`.
+of :func:`~mnished.calibration.run_and_score`.
 
 **Kling-Gupta Efficiency (KGE)** (Gupta et al. 2009):
 

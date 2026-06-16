@@ -1,5 +1,5 @@
 """
-hydroravens.hydrograph_separation
+mnished.hydrograph_separation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 Estimate reservoir timescales and initial storage depths from an observed
 discharge time series, without running the hydrological model.
@@ -16,7 +16,7 @@ The pipeline has two stages:
    on dry-season recession segments to extract τ_karst and its initial storage.
 
 The primary output is physically informed initial conditions and calibration
-parameter priors for hydroRaVENS, reducing spin-up requirements and improving
+parameter priors for MNiShed, reducing spin-up requirements and improving
 optimizer starting points.
 
 References
@@ -172,7 +172,7 @@ class HydrographSeparation:
     def get_initial_conditions(self):
         """
         Initial reservoir storage depths, ordered fastest to slowest
-        (shallow first, karst last), matching the hydroRaVENS reservoir
+        (shallow first, karst last), matching the MNiShed reservoir
         index convention.
 
         Returns
@@ -186,7 +186,7 @@ class HydrographSeparation:
     def get_parameter_priors(self):
         """
         Suggested initial values and bounds (in params.yml units) for the
-        hydroRaVENS log__t_recession_* calibration parameters.
+        MNiShed log__t_recession_* calibration parameters.
 
         Bounds are ±0.5 in log10 around the estimated timescale — wide enough
         to allow the optimizer freedom, tight enough to stay physical.
@@ -194,7 +194,7 @@ class HydrographSeparation:
         Returns
         -------
         dict
-            Keyed by hydroRaVENS parameter name.  Each value is a dict with
+            Keyed by MNiShed parameter name.  Each value is a dict with
             ``'initial'``, ``'lower'``, ``'upper'`` in log10(days).
         """
         self._check_fitted()

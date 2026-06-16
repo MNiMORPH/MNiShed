@@ -2,9 +2,9 @@ import os
 import sys
 sys.path.insert(0, os.path.abspath('../..'))
 
-from hydroravens._version import __version__
+from mnished._version import __version__
 
-project = 'HydroRaVENS'
+project = 'MNiShed'
 copyright = '2019-2026, MNiMORPH'
 author = 'Andrew D. Wickert'
 release = __version__

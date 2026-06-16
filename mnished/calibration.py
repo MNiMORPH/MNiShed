@@ -1,7 +1,7 @@
 """
-hydroravens.calibration
+mnished.calibration
 ~~~~~~~~~~~~~~~~~~~~~~~
-Run hydroRaVENS with a given parameter set and return a CalibResult
+Run MNiShed with a given parameter set and return a CalibResult
 named tuple containing the goodness-of-fit score, AIC, baseflow index,
 flow duration curve, end-of-run reservoir states, and the Buckets object.
 
@@ -73,7 +73,7 @@ import warnings
 import numpy as np
 import pandas as pd
 
-from .hydroravens import Buckets, Reservoir
+from .mnished import Buckets, Reservoir
 
 
 # ---------------------------------------------------------------------------
@@ -122,7 +122,7 @@ final_states : dict
          'fgi':         frozen_ground_index}       # [°C·day]
 
 buckets : Buckets
-    The :class:`~hydroravens.Buckets` object after the final run,
+    The :class:`~mnished.Buckets` object after the final run,
     including the full ``hydrodata`` DataFrame with modelled discharge.
 
 All scalar fields are ``np.nan`` if the scoring window contains no
@@ -376,7 +376,7 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                   metric='KGE', routing_N=2, routing_K=None,
                   enforce_water_balance='water-year'):
     """
-    Run hydroRaVENS and return a CalibResult named tuple.
+    Run MNiShed and return a CalibResult named tuple.
 
     Parameters
     ----------

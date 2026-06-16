@@ -1,7 +1,7 @@
 Tutorial: From Data to Calibrated Model
 ========================================
 
-This tutorial walks through a complete HydroRaVENS workflow, from raw
+This tutorial walks through a complete MNiShed workflow, from raw
 daily discharge and precipitation data to a calibrated model with
 physically informed parameter starting points.
 
@@ -16,7 +16,7 @@ The recommended workflow has four stages:
 
 1. **Estimate priors** — analyse the discharge record to get data-driven
    starting points for timescales, recession exponents, and initial
-   storage depths (:func:`~hydroravens.suggest_priors`).
+   storage depths (:func:`~mnished.suggest_priors`).
 2. **Write a configuration file** — populate a YAML file using the
    suggested priors.
 3. **Calibrate** — run the optimizer to refine parameters.
@@ -26,7 +26,7 @@ The recommended workflow has four stages:
 Input Data Format
 -----------------
 
-HydroRaVENS reads a CSV file with at minimum these columns:
+MNiShed reads a CSV file with at minimum these columns:
 
 .. code-block:: text
 
@@ -48,14 +48,14 @@ discharge column are allowed and are excluded from scoring.
 Stage 1 — Estimate Priors
 --------------------------
 
-Before running or calibrating the model, use :func:`~hydroravens.suggest_priors`
+Before running or calibrating the model, use :func:`~mnished.suggest_priors`
 to extract data-driven parameter starting points directly from the
 observed discharge record.
 
 .. code-block:: python
 
     import pandas as pd
-    from hydroravens import suggest_priors
+    from mnished import suggest_priors
 
     df = pd.read_csv('data/input.csv', parse_dates=['Date'])
     Q  = df['Specific Discharge [mm/day]'].values   # or compute from m³/s
@@ -67,7 +67,7 @@ observed discharge record.
 The output looks like::
 
     ============================================================
-    HydroRaVENS data-driven priors
+    MNiShed data-driven priors
     ============================================================
 
     E-folding residence times (fastest → slowest):
@@ -109,7 +109,7 @@ file.
 **What the priors mean:**
 
 - **Timescales** come from the spectral decomposition of the hydrograph
-  (:class:`~hydroravens.HydrographSeparation`). Use them as starting
+  (:class:`~mnished.HydrographSeparation`). Use them as starting
   points for calibration, not fixed values — the optimizer will refine
   them.
 - **b_soil** (the B–N estimate) is a data-driven starting point.
@@ -192,7 +192,7 @@ configuration is valid and the fit is in the right ballpark:
 
 .. code-block:: python
 
-    from hydroravens import Buckets
+    from mnished import Buckets
 
     model = Buckets()
     model.initialize('config.yml')
@@ -229,7 +229,7 @@ correct, magnitudes are in the right range), proceed to calibration.
 Stage 4 — Calibrate
 --------------------
 
-HydroRaVENS uses `Dakota <https://dakota.sandia.gov>`_ for calibration.
+MNiShed uses `Dakota <https://dakota.sandia.gov>`_ for calibration.
 The calibration workflow is driven by a ``params.yml`` file that
 specifies which parameters to calibrate and their bounds.  Use the
 bounds from ``pr.log_t_efold_bounds`` as the starting point for
@@ -267,7 +267,7 @@ After calibration, inspect the best-fit parameters and metrics:
 
 .. code-block:: python
 
-    from hydroravens import run_and_score
+    from mnished import run_and_score
 
     result = run_and_score(
         'config.yml',
@@ -293,7 +293,7 @@ Key metrics to examine:
 Raw e-folding times (τ) are not physically comparable across reservoirs
 or experiments when the recession exponent *b* differs.  After obtaining
 best-fit parameters, compute MRT for each reservoir using
-:meth:`~hydroravens.Reservoir.mean_residence_time` with the long-term mean
+:meth:`~mnished.Reservoir.mean_residence_time` with the long-term mean
 flux attributed to that layer as ``Q_ref``:
 
 .. code-block:: python
@@ -323,5 +323,5 @@ See Also
 - :doc:`configuration` — full YAML reference
 - :doc:`recession_analysis` — Brutsaert & Nieber theory and API
 - :doc:`calibration` — scoring functions, AIC, and metric details
-- :func:`~hydroravens.suggest_priors` — full API reference
-- :class:`~hydroravens.HydrographSeparation` — timescale decomposition
+- :func:`~mnished.suggest_priors` — full API reference
+- :class:`~mnished.HydrographSeparation` — timescale decomposition

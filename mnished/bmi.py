@@ -1,9 +1,9 @@
 """
-hydroravens.bmi
+mnished.bmi
 ~~~~~~~~~~~~~~~
-CSDMS Basic Model Interface (BMI) wrapper for HydroRaVENS.
+CSDMS Basic Model Interface (BMI) wrapper for MNiShed.
 
-Wraps the :class:`~hydroravens.Buckets` class so that HydroRaVENS can be
+Wraps the :class:`~mnished.Buckets` class so that MNiShed can be
 driven by any CSDMS-compliant framework or coupled online with other BMI
 models (e.g. a channel-routing or sediment-transport model receiving daily
 streamflow from a gauged watershed).
@@ -23,10 +23,10 @@ try:
 except ImportError as exc:
     raise ImportError(
         "bmipy is required for the BMI wrapper. "
-        "Install it with:  pip install 'hydroRaVENS[bmi]'"
+        "Install it with:  pip install 'MNiShed[bmi]'"
     ) from exc
 
-from .hydroravens import Buckets
+from .mnished import Buckets
 
 # ---------------------------------------------------------------------------
 # CSDMS Standard Names and variable metadata
@@ -86,7 +86,7 @@ _VAR_UNITS = {
     "subsurface_water_reservoir_9__depth":                   "mm",
 }
 
-# HydroRaVENS DataFrame column name for each input variable
+# MNiShed DataFrame column name for each input variable
 _INPUT_COLUMNS = {
     "atmosphere_water__liquid_equivalent_precipitation_rate": "Precipitation [mm/day]",
     "atmosphere__temperature":        "Mean Temperature [C]",
@@ -123,23 +123,23 @@ def _check_var(name: str) -> None:
 # BMI class
 # ---------------------------------------------------------------------------
 
-class BmiHydroRaVENS(Bmi):
+class BmiMNiShed(Bmi):
     """
-    CSDMS Basic Model Interface wrapper for HydroRaVENS.
+    CSDMS Basic Model Interface wrapper for MNiShed.
 
-    Wraps a :class:`~hydroravens.Buckets` instance so that HydroRaVENS
+    Wraps a :class:`~mnished.Buckets` instance so that MNiShed
     can participate in a CSDMS-compliant coupling framework.
 
     Two usage modes are supported:
 
-    **File-driven** (standard HydroRaVENS workflow) — the YAML config
+    **File-driven** (standard MNiShed workflow) — the YAML config
     points to a CSV containing all forcing data; the framework steps
     through the record by calling :meth:`update` repeatedly::
 
-        from hydroravens import BmiHydroRaVENS
+        from mnished import BmiMNiShed
         import numpy as np
 
-        bmi = BmiHydroRaVENS()
+        bmi = BmiMNiShed()
         bmi.initialize("config.yml")
         while bmi.get_current_time() < bmi.get_end_time():
             bmi.update()
@@ -171,7 +171,7 @@ class BmiHydroRaVENS(Bmi):
 
     where ``area_km2 = bmi._model.drainage_basin_area__km2``.
 
-    **get_value_ptr**: HydroRaVENS stores scalar state as Python floats,
+    **get_value_ptr**: MNiShed stores scalar state as Python floats,
     not numpy arrays.  :meth:`get_value_ptr` therefore returns a fresh
     length-1 array rather than a live pointer into model memory.  Values
     in the returned array do not update when the model advances; call
@@ -201,7 +201,7 @@ class BmiHydroRaVENS(Bmi):
 
     def initialize(self, config_file: str) -> None:
         """
-        Load a HydroRaVENS YAML configuration file and prepare the model.
+        Load a MNiShed YAML configuration file and prepare the model.
 
         Reads the configuration, loads the input CSV time series, builds
         the reservoir stack, and runs spin-up cycles.  After this call,
@@ -210,7 +210,7 @@ class BmiHydroRaVENS(Bmi):
         Parameters
         ----------
         config_file : str
-            Path to a HydroRaVENS YAML configuration file.
+            Path to a MNiShed YAML configuration file.
         """
         self._model = Buckets()
         self._model.initialize(config_file)
@@ -258,8 +258,8 @@ class BmiHydroRaVENS(Bmi):
         """
         Release internal resources.
 
-        Discards the :class:`~hydroravens.Buckets` instance.  Does not
-        call :meth:`~hydroravens.Buckets.finalize` on the inner model
+        Discards the :class:`~mnished.Buckets` instance.  Does not
+        call :meth:`~mnished.Buckets.finalize` on the inner model
         (which would trigger an NSE print and a plot pop-up).
         """
         self._model = None
@@ -269,7 +269,7 @@ class BmiHydroRaVENS(Bmi):
     # -----------------------------------------------------------------------
 
     def get_component_name(self) -> str:
-        return "HydroRaVENS"
+        return "MNiShed"
 
     def get_input_item_count(self) -> int:
         return len(_INPUT_VAR_NAMES)

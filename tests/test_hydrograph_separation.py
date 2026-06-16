@@ -10,7 +10,7 @@ import warnings
 
 import numpy as np
 import pytest
-from hydroravens import HydrographSeparation
+from mnished import HydrographSeparation
 
 
 def _two_res_Q(n=600, tau1=8.0, tau2=400.0, Q1=5.0, Q2=2.0):

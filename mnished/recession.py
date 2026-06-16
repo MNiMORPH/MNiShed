@@ -1,5 +1,5 @@
 """
-hydroravens.recession
+mnished.recession
 ~~~~~~~~~~~~~~~~~~~~~
 Brutsaert & Nieber (1977) recession analysis.
 
@@ -11,7 +11,7 @@ on a log–log plot of all recession segments extracted from an observed
 discharge time series.
 
 The slope *n* characterises the nonlinearity of the storage–discharge
-relationship.  In the HydroRaVENS power-law reservoir (Q ∝ H^b), the
+relationship.  In the MNiShed power-law reservoir (Q ∝ H^b), the
 two exponents are related by::
 
     n = (2b - 1) / b   →   b = 1 / (2 - n)
@@ -52,7 +52,7 @@ class BrutsaertNieber:
 
         -dQ/dt = a * Q^n
 
-    The fitted slope *n* can be converted to a HydroRaVENS
+    The fitted slope *n* can be converted to a MNiShed
     ``recession_exponent`` *b* via :meth:`to_reservoir_exponent`.
 
     Parameters
@@ -86,7 +86,7 @@ class BrutsaertNieber:
     Examples
     --------
     >>> import numpy as np
-    >>> from hydroravens import BrutsaertNieber
+    >>> from mnished import BrutsaertNieber
     >>> Q = np.array([10.0, 8.0, 6.5, 5.2, 4.0, 3.1, 2.4, 1.8, 1.3])
     >>> bn = BrutsaertNieber(Q).fit()
     >>> print(f"n = {bn.n_:.3f},  b_HR = {bn.to_reservoir_exponent():.3f}")
@@ -250,7 +250,7 @@ class BrutsaertNieber:
 
     def to_reservoir_exponent(self):
         """
-        Convert the fitted B–N slope *n* to a HydroRaVENS
+        Convert the fitted B–N slope *n* to a MNiShed
         ``recession_exponent`` *b*.
 
         The relationship derives from substituting Q ∝ H^b and
@@ -265,7 +265,7 @@ class BrutsaertNieber:
         Returns
         -------
         float
-            HydroRaVENS ``recession_exponent`` *b*.  Returns
+            MNiShed ``recession_exponent`` *b*.  Returns
             ``numpy.inf`` when n ≥ 2.
 
         Raises
@@ -307,7 +307,7 @@ class BrutsaertNieber:
             f"  Recession pairs used : {len(self._Q_mid)}\n"
             f"  Fitted slope  n      : {self.n_:.4f}\n"
             f"  Fitted coeff  a      : {self.a_:.4g}\n"
-            f"  HydroRaVENS   b      : {b_str}\n"
+            f"  MNiShed   b      : {b_str}\n"
             f"  Power-law R²         : {self.r2_:.3f}\n"
             f"  Quadratic R²         : {self.r2_quadratic_:.3f}"
             + (f"\n{curv_note}" if curv_note else "") +

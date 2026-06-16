@@ -3,7 +3,7 @@ Unit tests for the Snowpack class.
 """
 
 import pytest
-from hydroravens.hydroravens import Snowpack
+from mnished.mnished import Snowpack
 
 
 def test_accumulation_below_freezing():

@@ -1,7 +1,7 @@
 CSDMS Basic Model Interface
 ============================
 
-HydroRaVENS includes a `CSDMS Basic Model Interface (BMI)
+MNiShed includes a `CSDMS Basic Model Interface (BMI)
 <https://bmi.csdms.io/>`_ wrapper that enables it to be driven by any
 BMI-compliant coupling framework and to exchange variables with other
 BMI models.
@@ -13,7 +13,7 @@ BMI models.
 Overview
 --------
 
-The BMI wrapper exposes HydroRaVENS as a scalar (lumped) model with a
+The BMI wrapper exposes MNiShed as a scalar (lumped) model with a
 single grid of rank 0 and size 1.  All variables are scalars representing
 catchment-integrated quantities.
 
@@ -21,14 +21,14 @@ The wrapper supports two usage modes:
 
 **File-driven** (standard workflow)
     The YAML configuration file points to a CSV containing all forcing
-    data.  The framework calls :meth:`~hydroravens.BmiHydroRaVENS.update`
-    repeatedly to step through the record.  No :meth:`~hydroravens.BmiHydroRaVENS.set_value`
+    data.  The framework calls :meth:`~mnished.BmiMNiShed.update`
+    repeatedly to step through the record.  No :meth:`~mnished.BmiMNiShed.set_value`
     calls are needed.
 
 **Online coupled**
     An upstream model provides forcing each timestep via
-    :meth:`~hydroravens.BmiHydroRaVENS.set_value` before calling
-    :meth:`~hydroravens.BmiHydroRaVENS.update`.  The CSV file still
+    :meth:`~mnished.BmiMNiShed.set_value` before calling
+    :meth:`~mnished.BmiMNiShed.update`.  The CSV file still
     provides the initial time series (used for spin-up and as a default
     if a variable is not overridden).
 
@@ -40,7 +40,7 @@ Install it with the ``bmi`` optional-dependency group:
 
 .. code-block:: bash
 
-    pip install 'hydroRaVENS[bmi]'
+    pip install 'MNiShed[bmi]'
 
 Usage
 -----
@@ -50,9 +50,9 @@ File-driven
 
 .. code-block:: python
 
-    from hydroravens import BmiHydroRaVENS
+    from mnished import BmiMNiShed
 
-    bmi = BmiHydroRaVENS()
+    bmi = BmiMNiShed()
     bmi.initialize("config.yml")
 
     while bmi.get_current_time() < bmi.get_end_time():
@@ -60,7 +60,7 @@ File-driven
 
     bmi.finalize()
 
-Use :meth:`~hydroravens.BmiHydroRaVENS.update_until` to advance to a
+Use :meth:`~mnished.BmiMNiShed.update_until` to advance to a
 specific time without writing the loop yourself::
 
     bmi.update_until(365.0)   # advance one year
@@ -71,9 +71,9 @@ Online coupled
 .. code-block:: python
 
     import numpy as np
-    from hydroravens import BmiHydroRaVENS
+    from mnished import BmiMNiShed
 
-    bmi = BmiHydroRaVENS()
+    bmi = BmiMNiShed()
     bmi.initialize("config.yml")        # CSV values loaded for spin-up
 
     while bmi.get_current_time() < bmi.get_end_time():
@@ -116,11 +116,11 @@ Input variables
 ~~~~~~~~~~~~~~~
 
 These variables are read from the CSV by default.  In online-coupled
-mode, call :meth:`~hydroravens.BmiHydroRaVENS.set_value` before each
-:meth:`~hydroravens.BmiHydroRaVENS.update` to override them.
+mode, call :meth:`~mnished.BmiMNiShed.set_value` before each
+:meth:`~mnished.BmiMNiShed.update` to override them.
 
 Temperature and ET inputs are declared even when those columns are absent
-from the CSV.  Calling :meth:`~hydroravens.BmiHydroRaVENS.set_value` for
+from the CSV.  Calling :meth:`~mnished.BmiMNiShed.set_value` for
 an absent column raises :exc:`KeyError`.
 
 .. list-table::
@@ -129,7 +129,7 @@ an absent column raises :exc:`KeyError`.
 
    * - CSDMS Standard Name
      - Units
-     - HydroRaVENS column
+     - MNiShed column
    * - ``atmosphere_water__liquid_equivalent_precipitation_rate``
      - mm d⁻¹
      - ``Precipitation [mm/day]``
@@ -150,8 +150,8 @@ Output variables
 ~~~~~~~~~~~~~~~~
 
 These variables are updated by each call to
-:meth:`~hydroravens.BmiHydroRaVENS.update` and retrieved via
-:meth:`~hydroravens.BmiHydroRaVENS.get_value`.
+:meth:`~mnished.BmiMNiShed.update` and retrieved via
+:meth:`~mnished.BmiMNiShed.get_value`.
 
 .. list-table::
    :widths: 55 15 30
@@ -182,12 +182,12 @@ These variables are updated by each call to
 
 .. note::
 
-   HydroRaVENS itself places no limit on the number of reservoirs — you
+   MNiShed itself places no limit on the number of reservoirs — you
    can add as many as you like to the ``reservoirs:`` block in the YAML
    configuration.  The BMI wrapper caps *exposed* reservoir outputs at 10
    (indices 0–9) because the BMI specification requires variable names to
    be fixed at import time.  If you configure more than 10 reservoirs,
-   :meth:`~hydroravens.BmiHydroRaVENS.initialize` will raise a
+   :meth:`~mnished.BmiMNiShed.initialize` will raise a
    :exc:`ValueError` with instructions pointing to the four constants in
    ``hydroravens/bmi.py`` that need updating:
    ``_OUTPUT_VAR_NAMES``, ``_VAR_UNITS``, ``_RESERVOIR_DEPTH_NAMES``, and
@@ -213,7 +213,7 @@ Grid and Time
    * - Time unit
      - ``"d"`` (days)
    * - Timestep
-     - 1.0 day (HydroRaVENS is a daily model)
+     - 1.0 day (MNiShed is a daily model)
    * - Start time
      - 0.0
    * - End time
@@ -226,27 +226,27 @@ grids.
 Caveats
 -------
 
-**get_value_ptr is a snapshot, not a live pointer.** HydroRaVENS stores
+**get_value_ptr is a snapshot, not a live pointer.** MNiShed stores
 scalar state as Python floats rather than numpy arrays.
-:meth:`~hydroravens.BmiHydroRaVENS.get_value_ptr` therefore returns a
+:meth:`~mnished.BmiMNiShed.get_value_ptr` therefore returns a
 fresh length-1 array each call; the array does not update automatically
 when the model advances.  Call
-:meth:`~hydroravens.BmiHydroRaVENS.get_value` after each
-:meth:`~hydroravens.BmiHydroRaVENS.update` to retrieve current values.
+:meth:`~mnished.BmiMNiShed.get_value` after each
+:meth:`~mnished.BmiMNiShed.update` to retrieve current values.
 
 **Spin-up is internal.** Spin-up cycles specified in the YAML config run
-inside :meth:`~hydroravens.BmiHydroRaVENS.initialize`; the BMI time
+inside :meth:`~mnished.BmiMNiShed.initialize`; the BMI time
 counter starts at 0.0 after spin-up completes.
 
 **finalize() does not plot.** Calling
-:meth:`~hydroravens.BmiHydroRaVENS.finalize` discards the internal model
-object but does not call :meth:`~hydroravens.Buckets.finalize` on it,
+:meth:`~mnished.BmiMNiShed.finalize` discards the internal model
+object but does not call :meth:`~mnished.Buckets.finalize` on it,
 which would trigger an NSE print and a plot pop-up unsuitable for
 headless coupling runs.
 
 **Calling update() past the end of the record raises an error.** The
 file-driven loop ``while bmi.get_current_time() < bmi.get_end_time()``
-terminates correctly.  Calling :meth:`~hydroravens.BmiHydroRaVENS.update`
+terminates correctly.  Calling :meth:`~mnished.BmiMNiShed.update`
 after all rows have been consumed will raise a ``KeyError`` from the
 internal pandas DataFrame.  Guard against this in custom loops by checking
 ``get_current_time() < get_end_time()`` before each call.
@@ -254,7 +254,7 @@ internal pandas DataFrame.  Guard against this in custom loops by checking
 API Reference
 -------------
 
-.. autoclass:: hydroravens.BmiHydroRaVENS
+.. autoclass:: mnished.BmiMNiShed
    :members: initialize, update, update_until, finalize,
              get_component_name,
              get_input_item_count, get_output_item_count,

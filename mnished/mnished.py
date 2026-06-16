@@ -430,7 +430,7 @@ class Buckets(object):
     (nearest Earth's surface) to bottom (deepest groundwater); this order
     controls the direction of infiltration between layers.
 
-    HydroRaVENS is designed as a daily-timestep model. This is a deliberate
+    MNiShed is designed as a daily-timestep model. This is a deliberate
     design choice: the physical parameterisations — degree-day snowmelt,
     Thornthwaite ET, and linear reservoir drainage — are climatological
     approximations that are well-founded at daily resolution but lose physical
@@ -731,14 +731,14 @@ class Buckets(object):
             self.snowpack.Hwater = self.cfg['initial_conditions']['snowpack__mm_SWE']
         # Reservoir H0 values are set in the list comprehension above.
 
-        # Enforce the daily timestep. HydroRaVENS is a daily model by design:
+        # Enforce the daily timestep. MNiShed is a daily model by design:
         # degree-day snowmelt, Thornthwaite ET, and linear reservoir drainage
         # are all daily-scale parameterisations.
         if (self.hydrodata['Date'].diff()[1:] == pd.Timedelta('1 day')).all():
             self.dt = 1.
         else:
             raise ValueError(
-                "HydroRaVENS requires a continuous daily time series "
+                "MNiShed requires a continuous daily time series "
                 "(exactly 1-day intervals throughout). Sub-daily or "
                 "irregular timesteps are not supported; the physical "
                 "parameterisations (degree-day snowmelt, Thornthwaite ET, "
@@ -1484,7 +1484,7 @@ class Buckets(object):
 def main():
     """Command-line entry point: parse ``-y``/``--configfile`` and run the model."""
     parser = argparse.ArgumentParser(
-        description='Pass the configuration file path to run hydroRaVENS.')
+        description='Pass the configuration file path to run MNiShed.')
     parser.add_argument('-y', '--configfile', type=str,
                         help='YAML file from which all inputs are read.')
 

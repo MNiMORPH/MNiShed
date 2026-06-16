@@ -1,12 +1,12 @@
 """
-Tests for the BmiHydroRaVENS wrapper.
+Tests for the BmiMNiShed wrapper.
 
 Run from the repository root with::
 
     pytest tests/test_bmi.py -v
 
 The tests use the Cannon River forward example in examples/cannon_forward/.
-bmipy must be installed (pip install 'hydroRaVENS[bmi]').
+bmipy must be installed (pip install 'MNiShed[bmi]').
 """
 
 import os
@@ -14,7 +14,7 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip("bmipy", reason="bmipy not installed; skipping BMI tests (pip install 'hydroRaVENS[bmi]')")
+pytest.importorskip("bmipy", reason="bmipy not installed; skipping BMI tests (pip install 'MNiShed[bmi]')")
 
 # ---------------------------------------------------------------------------
 # Helpers
@@ -38,10 +38,10 @@ RES2_NAME = "subsurface_water_reservoir_2__depth"
 
 @pytest.fixture
 def bmi(monkeypatch):
-    """Initialized BmiHydroRaVENS using the Cannon River forward example."""
-    from hydroravens import BmiHydroRaVENS
+    """Initialized BmiMNiShed using the Cannon River forward example."""
+    from mnished import BmiMNiShed
     monkeypatch.chdir(EXAMPLE_DIR)
-    b = BmiHydroRaVENS()
+    b = BmiMNiShed()
     b.initialize(EXAMPLE_CONFIG)
     yield b
     b.finalize()
@@ -75,7 +75,7 @@ def test_finalize_clears_model(bmi):
 # ---------------------------------------------------------------------------
 
 def test_component_name(bmi):
-    assert bmi.get_component_name() == "HydroRaVENS"
+    assert bmi.get_component_name() == "MNiShed"
 
 
 def test_item_counts(bmi):
@@ -292,13 +292,13 @@ def test_set_value_high_precip_increases_discharge(monkeypatch):
     The resulting discharge difference verifies the full set_value → update
     → get_value pipeline.
     """
-    from hydroravens import BmiHydroRaVENS
+    from mnished import BmiMNiShed
     monkeypatch.chdir(EXAMPLE_DIR)
 
     SUMMER_STEP = 182  # 1992-07-01, T = 21 °C, no snowpack
 
     # Normal run through step SUMMER_STEP
-    bmi_base = BmiHydroRaVENS()
+    bmi_base = BmiMNiShed()
     bmi_base.initialize(EXAMPLE_CONFIG)
     bmi_base.update_until(float(SUMMER_STEP + 1))
     dest_normal = np.empty(1, dtype=np.float64)
@@ -306,7 +306,7 @@ def test_set_value_high_precip_increases_discharge(monkeypatch):
     bmi_base.finalize()
 
     # Same run but with very high precipitation on step SUMMER_STEP
-    bmi_high = BmiHydroRaVENS()
+    bmi_high = BmiMNiShed()
     bmi_high.initialize(EXAMPLE_CONFIG)
     bmi_high.update_until(float(SUMMER_STEP))
     bmi_high.set_value(P_NAME, np.array([500.0]))

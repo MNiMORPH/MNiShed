@@ -4,8 +4,8 @@ authors:
 - family-names: "Wickert"
   given-names: "Andrew D."
   orcid: "https://orcid.org/0000-0002-9545-3365"
-title: "HydroRaVENS: Rain and Variable Evapotranspiration, Nieve, and Streamflow"
+title: "MNiShed: Rain and Variable Evapotranspiration, Nieve, and Streamflow"
 version: 2.3.0
 doi: 10.5281/zenodo.6787390
 date-released: 2026-05-11
-url: "https://github.com/MNiMORPH/hydroRaVENS"
+url: "https://github.com/MNiMORPH/MNiShed"

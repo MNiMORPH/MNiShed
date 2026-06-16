@@ -1,7 +1,7 @@
 Recession Analysis
 ==================
 
-HydroRaVENS includes tools for analysing the nonlinear storage–discharge
+MNiShed includes tools for analysing the nonlinear storage–discharge
 relationship directly from observed streamflow records, before running or
 calibrating the model.
 
@@ -27,7 +27,7 @@ then substituting :math:`\mathrm{d}H/\mathrm{d}t = -Q` gives
     -\frac{\mathrm{d}Q}{\mathrm{d}t} = K \, Q^n,
     \qquad n = \frac{2b - 1}{b},
 
-where :math:`b` is the HydroRaVENS ``recession_exponent`` and :math:`n`
+where :math:`b` is the MNiShed ``recession_exponent`` and :math:`n`
 is the slope on a log–log plot of :math:`-\mathrm{d}Q/\mathrm{d}t`
 versus :math:`Q` — the Brutsaert & Nieber (1977) recession plot.
 
@@ -44,7 +44,7 @@ The two exponents have the following special values:
    :header-rows: 1
 
    * - B–N slope *n*
-     - HydroRaVENS *b*
+     - MNiShed *b*
      - Physical interpretation
    * - 1
      - 1
@@ -66,15 +66,15 @@ be used to set the baseflow recession exponent.
 Brutsaert–Nieber Analysis
 --------------------------
 
-.. autoclass:: hydroravens.BrutsaertNieber
+.. autoclass:: mnished.BrutsaertNieber
    :members: fit, to_reservoir_exponent, summary, plot
    :member-order: bysource
 
-Using Results in HydroRaVENS
+Using Results in MNiShed
 -----------------------------
 
 The B–N analysis produces a single catchment-integrated exponent *b*.
-In a multi-reservoir HydroRaVENS model, the reservoirs have different
+In a multi-reservoir MNiShed model, the reservoirs have different
 physical roles and the exponent should be assigned accordingly:
 
 .. list-table::
@@ -115,7 +115,7 @@ The upper scatter reflects short, event-driven recessions (tile drains,
 surface runoff) and should not be used to set the intermediate exponent.
 
 For a complete prior-estimation workflow that combines the B–N analysis
-with timescale estimation, see :func:`~hydroravens.suggest_priors` and
+with timescale estimation, see :func:`~mnished.suggest_priors` and
 the :doc:`tutorial`.
 
 Workflow
@@ -127,7 +127,7 @@ prior for model calibration:
 .. code-block:: python
 
     import pandas as pd
-    from hydroravens import BrutsaertNieber
+    from mnished import BrutsaertNieber
 
     df = pd.read_csv('streamflow.csv', parse_dates=['Date'])
     Q  = df['Specific Discharge [mm/day]'].values
@@ -145,7 +145,7 @@ The output might look like::
       Recession pairs used : 412
       Fitted slope  n      : 1.5831
       Fitted coeff  a      : 0.0147
-      HydroRaVENS   b      : 2.367
+      MNiShed   b      : 2.367
       Reference (long-time Boussinesq): n = 1.5, b = 2.0
 
 The lower envelope of the B–N cloud corresponds to long-duration
@@ -161,19 +161,19 @@ better captured by a calibrated soil-zone exponent.
 Goodness of fit and the power-law assumption
 --------------------------------------------
 
-:meth:`~hydroravens.BrutsaertNieber.fit` automatically assesses whether
+:meth:`~mnished.BrutsaertNieber.fit` automatically assesses whether
 the recession cloud is well described by a power law and issues a
 ``UserWarning`` when it is not.
 
 Two diagnostics are computed and stored as attributes:
 
-* **R² of the power-law fit** (:attr:`~hydroravens.BrutsaertNieber.r2_`)
+* **R² of the power-law fit** (:attr:`~mnished.BrutsaertNieber.r2_`)
   — coefficient of determination of the linear log–log regression.
   The B–N cloud is inherently noisy (all types of recession contribute),
   so R² values of 0.4–0.7 are typical for real catchments.  R² < 0.4
   indicates a poor overall fit; inspect the plot.
 
-* **Curvature test** (:attr:`~hydroravens.BrutsaertNieber.r2_quadratic_`)
+* **Curvature test** (:attr:`~mnished.BrutsaertNieber.r2_quadratic_`)
   — R² of a degree-2 polynomial fit in log–log space.  If the quadratic
   fit is substantially better than the linear fit (ΔR² > 0.05), the
   recession cloud is systematically curved.  A straight line in log–log
@@ -198,7 +198,7 @@ a power law.  This can arise from:
 
 In the first case, the lower envelope still provides a useful prior for
 the intermediate reservoir exponent.  In the second case, a different
-reservoir functional form may be needed — one that HydroRaVENS does not
+reservoir functional form may be needed — one that MNiShed does not
 currently implement, following Kirchner's (2009) more general framework.
 In the third case, inspect and correct the input data before re-fitting.
 

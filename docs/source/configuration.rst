@@ -1,7 +1,7 @@
 Configuration Reference
 ========================
 
-HydroRaVENS is configured entirely through a YAML file. This page documents all 
+MNiShed is configured entirely through a YAML file. This page documents all 
 available options.
 
 Configuration File Structure
@@ -107,7 +107,7 @@ The ``catchment`` section
     ``ThorntwaiteChang2019`` requires long-term monthly temperature
     normals to compute the Thornthwaite heat index :math:`I` and
     exponent :math:`a`. If normals are not supplied via
-    ``T_monthly_normals`` in the :class:`~hydroravens.Buckets`
+    ``T_monthly_normals`` in the :class:`~mnished.Buckets`
     constructor, they are computed automatically from the mean monthly
     temperatures in the input record. A ``UserWarning`` is raised when
     the record is shorter than 20 years, as a short period may not
@@ -143,7 +143,7 @@ The ``general`` section
      - Number of complete passes through data before the main run. Use 0 to
        skip spin-up (e.g. when supplying ``initial_states`` for chained
        decade runs). ``null`` (or omitting the key when calling
-       :func:`~hydroravens.calibration.run_and_score`) triggers automatic
+       :func:`~mnished.calibration.run_and_score`) triggers automatic
        calculation: ``ceil(τ_max / record_length)``, where ``τ_max`` is the
        longest reservoir e-folding time. Because initial conditions are set
        to analytical steady-state depths, one e-folding time is sufficient
@@ -161,7 +161,7 @@ The ``general`` section
        directly as runoff, bypassing the reservoir cascade. Active only
        when ``direct_runoff: true`` in the ``modules`` block. Default
        ``0.0`` (disabled). Also settable as a calibration parameter via
-       :func:`~hydroravens.calibration.run_and_score`.
+       :func:`~mnished.calibration.run_and_score`.
    * - ``enforce_water_balance``
      - string
      - Controls how ET is scaled to close the water balance.
@@ -245,7 +245,7 @@ All lists must have the same length.
        (Brutsaert & Nieber 1977); calibrated soil-zone values are typically
        larger (:math:`b \approx 3`–5). Default: all ``1.0`` (linear).
        Also overridable per calibration run via
-       :func:`~hydroravens.calibration.run_and_score`. See
+       :func:`~mnished.calibration.run_and_score`. See
        :doc:`model_description` for theory and :doc:`recession_analysis`
        for estimating *b* from observed streamflow.
 
@@ -312,7 +312,7 @@ the input CSV, but the ``PDD_melt_factor`` key must be present regardless.
        triggers). Requires ``frozen_ground: true`` in the ``modules``
        block and temperature data. Typically calibrated; literature values
        for agricultural soils range from ~50–200 °C·day. Also overridable
-       via :func:`~hydroravens.calibration.run_and_score`. **Do not
+       via :func:`~mnished.calibration.run_and_score`. **Do not
        calibrate simultaneously with** ``snow_insulation_k`` — see
        :doc:`model_description`.
    * - ``snow_insulation_k``
@@ -434,7 +434,7 @@ ET Module Parameters
 ~~~~~~~~~~~~~~~~~~~~
 
 The parameters below are calibration parameters associated with the ET
-modules. They are passed to :func:`~hydroravens.calibration.run_and_score`
+modules. They are passed to :func:`~mnished.calibration.run_and_score`
 rather than read directly from the YAML file (except ``et_alpha``, which
 may also be set in the ``general`` block).
 

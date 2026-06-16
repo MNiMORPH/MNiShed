@@ -31,12 +31,12 @@ EXAMPLE_CONFIG = "cannon_cfg.yml"
 @pytest.fixture(scope="module")
 def cannon():
     """Run the Cannon River forward example once; share across tests."""
-    import hydroravens
+    import mnished
 
     orig_dir = os.getcwd()
     os.chdir(EXAMPLE_DIR)
     try:
-        b = hydroravens.Buckets()
+        b = mnished.Buckets()
         b.initialize(EXAMPLE_CONFIG)
         b.run()
     finally:

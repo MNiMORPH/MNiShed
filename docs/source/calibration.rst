@@ -1,9 +1,9 @@
 Calibration
 ===========
 
-HydroRaVENS calibration is built around :func:`~hydroravens.run_and_score`,
+MNiShed calibration is built around :func:`~mnished.run_and_score`,
 which runs the model with a given parameter set, applies optional Nash-cascade
-routing and a scoring window, and returns a :class:`~hydroravens.CalibResult`
+routing and a scoring window, and returns a :class:`~mnished.CalibResult`
 containing all goodness-of-fit metrics.  Integration with an external optimizer
 (e.g. `Dakota <https://dakota.sandia.gov>`_) is achieved by writing a thin
 driver that reads parameter values from the optimizer's output file and calls
@@ -16,13 +16,13 @@ driver that reads parameter values from the optimizer's output file and calls
 run_and_score()
 ---------------
 
-.. autofunction:: hydroravens.run_and_score
+.. autofunction:: mnished.run_and_score
    :no-index:
 
 CalibResult
 -----------
 
-.. autoclass:: hydroravens.CalibResult
+.. autoclass:: mnished.CalibResult
    :no-inherited-members:
    :no-index:
 
@@ -67,14 +67,14 @@ The fields of ``CalibResult`` are:
      - Reservoir water depths (mm) at the end of the run.  Pass as
        ``initial_states=`` in the next decade run to chain simulations.
    * - ``buckets``
-     - :class:`~hydroravens.Buckets`
+     - :class:`~mnished.Buckets`
      - The fully initialised and run model object.  Access
        ``result.buckets.hydrodata`` for the full simulated time series.
 
 Goodness-of-Fit Metrics
 ------------------------
 
-The ``metric`` argument to :func:`~hydroravens.run_and_score` selects the
+The ``metric`` argument to :func:`~mnished.run_and_score` selects the
 composite score maximised during calibration and returned as
 ``CalibResult.score``.  The AIC is always computed and returned separately
 regardless of the chosen metric.
@@ -316,7 +316,7 @@ AIC-based exploration.
   lower-envelope value — the B–N lower envelope represents the slowest observable
   recession, which corresponds to the intermediate Quaternary zone (MRT of days to
   weeks).  See :doc:`recession_analysis` for the derivation and
-  :class:`~hydroravens.BrutsaertNieber` for how to compute the estimate.
+  :class:`~mnished.BrutsaertNieber` for how to compute the estimate.
 
 - ``recession_b_deep = 1.0`` fixed — the deep reservoir (MRT of decades to
   centuries) produces discharge too small and too slow to constrain :math:`b`
