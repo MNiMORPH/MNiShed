@@ -40,7 +40,8 @@ class Reservoir(object):
     """
 
     def __init__(self, t_recession, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
-                 H0=0., f_tile=0.0, tau_tile=None):
+                 H0=0., f_tile=0.0, tau_tile=None,
+                 junction_type='fraction', leakance_R=None, H_threshold=0.0):
         """
         Initialize a reservoir.
 
@@ -56,6 +57,7 @@ class Reservoir(object):
             Fraction of water lost each time step that exits as river
             discharge. The remainder (1 - f_to_discharge) infiltrates to
             the next-deeper reservoir. Default 1.0 (all to discharge).
+            Used only when junction_type is 'fraction' or 'threshold'.
         Hmax : float, optional
             Maximum water depth the reservoir can hold. Default np.inf.
         pdm_H0 : float or None, optional
@@ -79,18 +81,52 @@ class Reservoir(object):
             E-folding residence time [days] of the tile-drain sub-reservoir.
             Typical values: 3–21 days for agricultural tile systems.  Required
             when f_tile > 0; ignored when f_tile == 0.  Default None.
+        junction_type : str, optional
+            How drainage is partitioned between river discharge and the
+            next-deeper reservoir.  Options:
+
+            ``'fraction'`` (default)
+                Fixed split: ``f_to_discharge`` fraction exits as stream
+                discharge; remainder infiltrates.  Current default behaviour.
+
+            ``'leakance'``
+                Head-difference driven flow to the next reservoir, physically
+                representing Darcy flow through a confining unit (e.g. a shale
+                layer).  ``Q_leak = max(H_this - H_next, 0) / leakance_R``,
+                capped at the total drainage ``dH``.  The remainder goes to
+                stream.  Requires ``leakance_R``.
+
+            ``'threshold'``
+                Dead-storage threshold: the recession law is applied only to
+                ``max(H - H_threshold, 0)``; water below ``H_threshold``
+                never drains.  The above-threshold drainage splits by
+                ``f_to_discharge`` as in the ``'fraction'`` case.  Models a
+                stream-aquifer connection that activates only when the water
+                table exceeds the streambed elevation.
+        leakance_R : float or None, optional
+            Leakance resistance [days].  ``Q_leak = ΔH / leakance_R``.
+            Required when junction_type is ``'leakance'``.  Default None.
+        H_threshold : float, optional
+            Dead-storage threshold depth [mm].  Recession is applied only
+            to ``max(H - H_threshold, 0)``.  Used when junction_type is
+            ``'threshold'``.  Default 0.0 (no threshold; full storage drains).
 
         Raises
         ------
         ValueError
             If t_recession <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
-            pdm_H0 <= 0, f_tile < 0 or > 1, or f_tile > 0 with no tau_tile.
+            pdm_H0 <= 0, f_tile < 0 or > 1, f_tile > 0 with no tau_tile,
+            junction_type is unrecognised, or junction_type is 'leakance'
+            with no leakance_R.
         """
         self.Hwater = H0
         self.Hmax = Hmax
         self.pdm_H0 = pdm_H0
         self.t_recession = t_recession
         self.f_to_discharge = f_to_discharge
+        self.junction_type = junction_type
+        self.leakance_R    = leakance_R
+        self.H_threshold   = H_threshold
 
         # Initialized here so all instance attributes exist before
         # recharge() and discharge() are first called
@@ -119,6 +155,11 @@ class Reservoir(object):
             raise ValueError("f_tile must be in [0, 1]")
         if f_tile > 0 and tau_tile is None:
             raise ValueError("tau_tile must be provided when f_tile > 0")
+        _valid_junctions = ('fraction', 'leakance', 'threshold')
+        if junction_type not in _valid_junctions:
+            raise ValueError(f"junction_type must be one of {_valid_junctions}")
+        if junction_type == 'leakance' and leakance_R is None:
+            raise ValueError("leakance_R must be provided when junction_type='leakance'")
 
         self.f_tile = f_tile
         if f_tile > 0.0 and tau_tile is not None:
@@ -184,35 +225,55 @@ class Reservoir(object):
         else:
             self.Hwater += H
 
-    def discharge(self, dt):
+    def discharge(self, dt, H_next=None):
         """
         Discharge water from the reservoir over one time step.
 
-        Computes water lost by exponential decay, partitions it between
+        Computes water lost by the recession law, partitions it between
         river discharge (H_exfiltrated) and infiltration to the next-deeper
-        reservoir (H_infiltrated), and adds overflow from recharge()
-        (H_excess) to H_discharge.
+        reservoir (H_infiltrated) according to junction_type, and adds
+        overflow from recharge() (H_excess) to H_discharge.
 
         Parameters
         ----------
         dt : float
             Time step duration (same units as t_recession; typically days).
+        H_next : float or None, optional
+            Current water depth of the next-deeper reservoir [mm].  Used
+            only when junction_type is ``'leakance'`` to compute the
+            head-difference driven flux.  Ignored for other junction types.
         """
         b   = self.recession_exponent
         H0  = self.Hwater
-        if b == 1.0 or H0 <= 0.0:
-            dH = H0 * (1 - np.exp(-dt / self.t_recession))
+
+        # For threshold junction: recession applies only above H_threshold.
+        # Water below H_threshold is permanent dead storage.
+        H_eff = max(0.0, H0 - self.H_threshold) if self.junction_type == 'threshold' else H0
+
+        if b == 1.0 or H_eff <= 0.0:
+            dH = H_eff * (1 - np.exp(-dt / self.t_recession))
         else:
             # Exact integration of dH/dt = -(H/t_recession)·(H/H_ref)^(b-1)
             #   = -H^b / (t_recession · H_ref^(b-1))
             # Substituting u = H^(1-b):  du/dt = (b-1)/tau_eff
             # => H(t+dt) = [H0^(1-b) + (b-1)·dt/tau_eff]^(1/(1-b))
             tau_eff = self.t_recession * self.recession_H_ref ** (b - 1.0)
-            H_new   = (H0 ** (1.0 - b) + (b - 1.0) * dt / tau_eff) ** (1.0 / (1.0 - b))
-            dH      = H0 - max(0.0, H_new)
-        self.H_exfiltrated = dH * self.f_to_discharge
+            H_new   = (H_eff ** (1.0 - b) + (b - 1.0) * dt / tau_eff) ** (1.0 / (1.0 - b))
+            dH      = H_eff - max(0.0, H_new)
+
+        # Partition dH between stream discharge and infiltration to next reservoir.
+        if self.junction_type == 'leakance' and H_next is not None:
+            # Head-difference driven flux through confining unit (e.g., shale layer).
+            # Q_leak = max(H_this - H_next, 0) / R, capped at available drainage dH.
+            Q_leak             = min(dH, max(0.0, H0 - H_next) / self.leakance_R)
+            self.H_infiltrated = Q_leak
+            self.H_exfiltrated = dH - Q_leak
+        else:
+            # 'fraction' and 'threshold': fixed f_to_discharge split.
+            self.H_exfiltrated = dH * self.f_to_discharge
+            self.H_infiltrated = dH * (1 - self.f_to_discharge)
+
         self.H_discharge = self.H_excess + self.H_exfiltrated
-        self.H_infiltrated = dH * (1 - self.f_to_discharge)
         self.Hwater -= dH
 
         # Tile drainage: divert f_tile of H_infiltrated to the fast sub-reservoir.
@@ -598,14 +659,20 @@ class Buckets(object):
             self.cfg['initial_conditions']['water_reservoir_effective_depths__mm'])
         # Using this, we will build a list of reservoir objects
         # and initialize them based on the provided inputs
-        _pdm_H0   = self.cfg['reservoirs'].get('pdm_H0__mm',
-                                               [None]  * self.n_reservoirs)
-        _f_tile   = self.cfg['reservoirs'].get('tile_fractions',
-                                               [0.0]   * self.n_reservoirs)
-        _tau_tile = self.cfg['reservoirs'].get('tile_residence_times__days',
-                                               [None]  * self.n_reservoirs)
+        _pdm_H0        = self.cfg['reservoirs'].get('pdm_H0__mm',
+                                                    [None]  * self.n_reservoirs)
+        _f_tile        = self.cfg['reservoirs'].get('tile_fractions',
+                                                    [0.0]   * self.n_reservoirs)
+        _tau_tile      = self.cfg['reservoirs'].get('tile_residence_times__days',
+                                                    [None]  * self.n_reservoirs)
         _recession_exp = self.cfg['reservoirs'].get('recession_exponents',
-                                                   [1.0] * self.n_reservoirs)
+                                                    [1.0]   * self.n_reservoirs)
+        _junction_types   = self.cfg['reservoirs'].get('junction_types',
+                                                    ['fraction'] * self.n_reservoirs)
+        _leakance_R       = self.cfg['reservoirs'].get('leakance_R__days',
+                                                    [None]  * self.n_reservoirs)
+        _H_threshold      = self.cfg['reservoirs'].get('H_threshold__mm',
+                                                    [0.0]   * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
                 t_recession    = self.cfg['reservoirs']['recession_timescales__days'][i],
@@ -615,6 +682,9 @@ class Buckets(object):
                 H0             = self.cfg['initial_conditions']['water_reservoir_effective_depths__mm'][i],
                 f_tile         = _f_tile[i],
                 tau_tile       = _tau_tile[i],
+                junction_type  = _junction_types[i],
+                leakance_R     = _leakance_R[i],
+                H_threshold    = _H_threshold[i] if _H_threshold[i] is not None else 0.0,
             )
             for i in range(self.n_reservoirs)]
         for i, b_exp in enumerate(_recession_exp):
@@ -1235,7 +1305,9 @@ class Buckets(object):
                 self.reservoirs[i].recharge(
                     self.reservoirs[i-1].H_infiltrated
                     + self.reservoirs[i-1].H_deficit)
-            self.reservoirs[i].discharge(self.dt)
+            H_next = (self.reservoirs[i + 1].Hwater
+                      if i + 1 < len(self.reservoirs) else None)
+            self.reservoirs[i].discharge(self.dt, H_next=H_next)
             qi += self.reservoirs[i].H_discharge
 
         self.reservoirs[0].f_to_discharge = f0
