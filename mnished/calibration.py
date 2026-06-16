@@ -364,6 +364,7 @@ def _steady_state_depths(reservoirs, mean_q):
 
 def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                   pdm_H0=None, f_tile=None, tau_tile=None,
+                  leakance_R=None, H_threshold=None,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
                   et_scale=None, et_alpha=None,
                   wp_soil=None, wp_soil_sigma=None,
@@ -389,6 +390,18 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     f_to_discharge : list of float, optional
         Exfiltration fractions to stream, one per reservoir except the
         deepest (which is always 1.0). Overrides the values in cfg.
+        Used only for reservoirs whose junction_type is 'fraction' or 'threshold'.
+    leakance_R : list of float or None, optional
+        Leakance resistance [days] for each reservoir, one per reservoir.
+        ``None`` entries leave the reservoir at its config-defined junction type.
+        Non-None entries set junction_type to 'leakance' and assign the resistance.
+        ``Q_leak = max(H_this - H_next, 0) / R``.  Default None (all fraction).
+    H_threshold : list of float or None, optional
+        Dead-storage threshold depth [mm] for each reservoir, one per reservoir.
+        ``None`` entries leave the reservoir unchanged.  Non-None entries set
+        junction_type to 'threshold': only ``max(H - H_threshold, 0)`` drains.
+        Models a stream-aquifer connection that activates above a threshold head.
+        Default None (no threshold).
     Hmax : list of float, optional
         Maximum effective water depths [mm], one per reservoir. Overrides
         the values in cfg.
@@ -567,6 +580,20 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         for i, val in enumerate(f_to_discharge):
             b.reservoirs[i].f_to_discharge = val
         k += len(f_to_discharge)
+
+    if leakance_R is not None:
+        for i, val in enumerate(leakance_R):
+            if val is not None:
+                b.reservoirs[i].leakance_R = val
+                b.reservoirs[i].junction_type = 'leakance'
+        k += sum(1 for v in leakance_R if v is not None)
+
+    if H_threshold is not None:
+        for i, val in enumerate(H_threshold):
+            if val is not None:
+                b.reservoirs[i].H_threshold = val
+                b.reservoirs[i].junction_type = 'threshold'
+        k += sum(1 for v in H_threshold if v is not None)
 
     if Hmax is not None:
         for i, val in enumerate(Hmax):
