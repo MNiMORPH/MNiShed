@@ -7,10 +7,10 @@ MNiShed Documentation
 
 A simple, flexible reservoir-based hydrological model for water balance simulation and streamflow prediction.
 
-**MNiShed** (Rain and Variable Evapotranspiration, Nieve, and Streamflow) is a
-conceptual daily-timestep model that routes precipitation through an optional snowpack
-and a cascade of linear reservoirs. Ideal for ungauged basins, climate impact studies,
-and educational applications.
+**MNiShed** (*MN* = Minnesota, *Mni* = water in Dakota, *Mini* = small/lumped,
+*Shed* = watershed) is a miniature lumped conceptual model that routes precipitation
+through an optional snowpack and a cascade of reservoirs to produce streamflow.
+Ideal for long water-balance studies, climate impact assessments, and ungauged basins.
 
 **Key Features**
 ~~~~~~~~~~~~~~~~

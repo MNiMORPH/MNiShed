@@ -222,7 +222,7 @@ class BmiMNiShed(Bmi):
                 f"(subsurface_water_reservoir_0__depth through "
                 f"subsurface_water_reservoir_{_BMI_MAX_RESERVOIRS - 1}__depth). "
                 f"To support more reservoirs, add names to _OUTPUT_VAR_NAMES, "
-                f"_VAR_UNITS, and _RESERVOIR_DEPTH_NAMES in hydroravens/bmi.py "
+                f"_VAR_UNITS, and _RESERVOIR_DEPTH_NAMES in mnished/bmi.py "
                 f"and raise _BMI_MAX_RESERVOIRS."
             )
         # Buckets.initialize() ends with _timestep_i at end-of-record if

@@ -17,7 +17,7 @@ The easiest way to install MNiShed is via pip:
 
 .. code-block:: bash
 
-    pip install hydroravens
+    pip install mnished
 
 From Source (Development)
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -63,7 +63,7 @@ To verify your installation:
 Troubleshooting
 ~~~~~~~~~~~~~~~
 
-**ImportError when importing hydroravens**
+**ImportError when importing mnished**
 
   Ensure you've run ``pip install -e .`` from the repository root.
 

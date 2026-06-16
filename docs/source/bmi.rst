@@ -189,7 +189,7 @@ These variables are updated by each call to
    be fixed at import time.  If you configure more than 10 reservoirs,
    :meth:`~mnished.BmiMNiShed.initialize` will raise a
    :exc:`ValueError` with instructions pointing to the four constants in
-   ``hydroravens/bmi.py`` that need updating:
+   ``mnished/bmi.py`` that need updating:
    ``_OUTPUT_VAR_NAMES``, ``_VAR_UNITS``, ``_RESERVOIR_DEPTH_NAMES``, and
    ``_BMI_MAX_RESERVOIRS``.  The total subsurface storage across all
    reservoirs is always available via ``subsurface_water__depth``

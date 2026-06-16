@@ -2,7 +2,7 @@ API Reference
 =============
 
 This page documents the complete public API exported from the
-``hydroravens`` package.  See also:
+``mnished`` package.  See also:
 
 - :doc:`recession_analysis` — :class:`~mnished.BrutsaertNieber` (Brutsaert–Nieber recession analysis)
 - :doc:`priors` — :class:`~mnished.Priors` and :func:`~mnished.suggest_priors` (data-driven priors)

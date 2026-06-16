@@ -3,12 +3,14 @@
 [![PyPI version](https://img.shields.io/pypi/v/MNiShed)](https://pypi.org/project/MNiShed/)
 [![Tests](https://github.com/MNiMORPH/MNiShed/actions/workflows/tests.yml/badge.svg)](https://github.com/MNiMORPH/MNiShed/actions/workflows/tests.yml)
 
-# :black_nib: MNiShed
-**Rain and Variable Evapotranspiration, Nieve, and Streamflow**
+# MNiShed
+**Miniature watershed hydrological model**
+
+*MN* = Minnesota · *Mni* = water (Dakota) · *Mini* = small (lumped) · *Shed* = watershed
 
 <!-- start-intro -->
 
-MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes precipitation through an optional snowpack stage and then through a cascade of one or more linear reservoirs (soil zone, groundwater, etc.), producing streamflow. Evapotranspiration is either read from a data file or computed with the Thornthwaite–Chang 2019 equation, and is scaled per water year so that the long-run water balance closes. The model follows the [CSDMS Basic Model Interface (BMI)](https://csdms.colorado.edu/wiki/BMI).
+MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes precipitation through an optional snowpack stage and then through a cascade of one or more reservoirs (soil zone, groundwater, etc.), producing streamflow. Evapotranspiration is either read from a data file or computed with the Thornthwaite–Chang 2019 equation, and is scaled to close the long-run water balance. The model follows the [CSDMS Basic Model Interface (BMI)](https://csdms.colorado.edu/wiki/BMI).
 
 <!-- end-intro -->
 
@@ -58,7 +60,7 @@ See the [Quick Start guide](https://mnished.readthedocs.io/en/latest/quickstart.
 
 If you use MNiShed, please cite it using the metadata in [CITATION.cff](CITATION.cff) or via the Zenodo record:
 
-> Wickert, A. D. (2026). MNiShed: Rain and Variable Evapotranspiration, Nieve, and Streamflow. https://doi.org/10.5281/zenodo.6787390
+> Wickert, A. D. (2026). MNiShed: Miniature watershed hydrological model. https://doi.org/10.5281/zenodo.6787390
 
 ## Contact
 
