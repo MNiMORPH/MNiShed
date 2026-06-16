@@ -364,7 +364,8 @@ def _steady_state_depths(reservoirs, mean_q):
 
 def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                   pdm_H0=None, f_tile=None, tau_tile=None,
-                  leakance_R=None, H_threshold=None,
+                  leakance_R=None, leakance_R_calibrated=0,
+                  H_threshold=None, H_threshold_calibrated=0,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
                   et_scale=None, et_alpha=None,
                   wp_soil=None, wp_soil_sigma=None,
@@ -396,12 +397,18 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         ``None`` entries leave the reservoir at its config-defined junction type.
         Non-None entries set junction_type to 'leakance' and assign the resistance.
         ``Q_leak = max(H_this - H_next, 0) / R``.  Default None (all fraction).
+    leakance_R_calibrated : int, optional
+        Number of entries in ``leakance_R`` that are free calibration
+        parameters (for AIC k-counting).  Default 0.
     H_threshold : list of float or None, optional
         Dead-storage threshold depth [mm] for each reservoir, one per reservoir.
         ``None`` entries leave the reservoir unchanged.  Non-None entries set
         junction_type to 'threshold': only ``max(H - H_threshold, 0)`` drains.
         Models a stream-aquifer connection that activates above a threshold head.
         Default None (no threshold).
+    H_threshold_calibrated : int, optional
+        Number of entries in ``H_threshold`` that are free calibration
+        parameters (for AIC k-counting).  Default 0.
     Hmax : list of float, optional
         Maximum effective water depths [mm], one per reservoir. Overrides
         the values in cfg.
@@ -586,14 +593,14 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
             if val is not None:
                 b.reservoirs[i].leakance_R = val
                 b.reservoirs[i].junction_type = 'leakance'
-        k += sum(1 for v in leakance_R if v is not None)
+        k += leakance_R_calibrated
 
     if H_threshold is not None:
         for i, val in enumerate(H_threshold):
             if val is not None:
                 b.reservoirs[i].H_threshold = val
                 b.reservoirs[i].junction_type = 'threshold'
-        k += sum(1 for v in H_threshold if v is not None)
+        k += H_threshold_calibrated
 
     if Hmax is not None:
         for i, val in enumerate(Hmax):
