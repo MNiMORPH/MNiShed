@@ -585,8 +585,9 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
 
     if f_to_discharge is not None:
         for i, val in enumerate(f_to_discharge):
-            b.reservoirs[i].f_to_discharge = val
-        k += len(f_to_discharge)
+            if val is not None:
+                b.reservoirs[i].f_to_discharge = val
+        k += sum(1 for v in f_to_discharge if v is not None)
 
     if leakance_R is not None:
         for i, val in enumerate(leakance_R):
