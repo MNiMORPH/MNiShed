@@ -26,10 +26,279 @@ import pandas as pd
 import yaml
 from matplotlib import pyplot as plt
 
+try:
+    import numba as _numba
+    _numba_available = True
+except ImportError:
+    _numba_available = False
+
 # c_p / L_f: water's specific heat divided by the latent heat of fusion.
 # c_p = 4186 J kg⁻¹ °C⁻¹, L_f = 334 000 J kg⁻¹  →  ≈ 0.01253 °C⁻¹
 # Gives mm SWE melted per mm of rain per °C of rain temperature.
 _CP_LF = 4186.0 / 334000.0
+
+
+if _numba_available:
+    @_numba.jit(nopython=True, cache=True)
+    def _jit_run(P_arr, ET_arr, T_arr, T_min_arr, T_max_arr,
+                 H_init, H_snow_init, fgi_init, H_deficit_carry_init,
+                 tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
+                 leakance_R_arr, H_threshold_arr, Hmax_arr,
+                 melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
+                 direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
+                 has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
+                 use_direct_runoff, has_trange):
+        """JIT-compiled daily time loop replacing Buckets.run()/update().
+
+        Replicates update()/_compute_snowpack()/_update_fgi()/
+        _draw_et_from_reservoirs() exactly for the common case (no tile drains,
+        no PDM, no et_water_stress).  Falls back to the Python loop otherwise.
+
+        junction_arr encoding: 0 = fraction, 1 = leakance, 2 = threshold.
+        """
+        n_steps = len(P_arr)
+        n_res   = len(tau_arr)
+
+        Q_out    = np.empty(n_steps)
+        SWE_out  = np.empty(n_steps)
+        H_sub_out = np.empty(n_steps)
+
+        H_res            = H_init.copy()
+        H_snow_cur       = H_snow_init
+        fgi_cur          = fgi_init
+        H_deficit_carry  = H_deficit_carry_init
+
+        # Local copy of f_to_discharge — frozen-ground overrides res[0] temporarily
+        f_dis = f_dis_in.copy()
+
+        # Per-reservoir cascade working arrays
+        H_infiltrated = np.zeros(n_res)
+        H_deficit_res = np.zeros(n_res)
+
+        for step in range(n_steps):
+            P_t  = P_arr[step]
+            ET_t = ET_arr[step]
+            T_t  = 0.0
+
+            # Read temperature when needed by snowpack or FGI
+            if has_snowpack or use_fgi:
+                T_t = T_arr[step]
+
+            # Skip step if any required forcing is NaN.
+            # T NaN only triggers skip when snowpack is active (matches Python).
+            skip = math.isnan(P_t) or math.isnan(ET_t)
+            if has_snowpack and not skip:
+                skip = math.isnan(T_t)
+
+            if skip:
+                Q_out[step]    = np.nan
+                SWE_out[step]  = H_snow_cur
+                H_sub_total = 0.0
+                for r in range(n_res):
+                    H_sub_total += H_res[r]
+                H_sub_out[step] = H_sub_total
+                continue
+
+            # ── Snowpack ──────────────────────────────────────────────────
+            sp_infiltrated = 0.0
+            sp_deficit     = 0.0
+            excess_dd      = 0.0
+
+            if has_snowpack:
+                if use_et_reservoir_draw:
+                    sp_recharge = P_t + H_deficit_carry
+                else:
+                    sp_recharge = P_t - ET_t + H_deficit_carry
+
+                # Snowpack.recharge(sp_recharge)
+                if sp_recharge >= 0.0:
+                    if T_t <= 0.0:
+                        H_snow_cur += sp_recharge
+                        # sp_infiltrated stays 0
+                    else:
+                        sp_infiltrated = sp_recharge
+                else:
+                    # Sublimation; deficit if snow insufficient
+                    if H_snow_cur > -sp_recharge:
+                        H_snow_cur += sp_recharge
+                    else:
+                        sp_deficit = sp_recharge + H_snow_cur
+                        H_snow_cur = 0.0
+                    # sp_infiltrated stays 0
+
+                # Snowpack.melt(dt, P)
+                if T_t > 0.0:
+                    pdd     = melt_factor * T_t * dt
+                    ros_P   = P_t if use_rain_on_snow else 0.0
+                    ros     = _CP_LF * T_t * ros_P
+                    total_m = pdd + ros
+                    if total_m <= H_snow_cur:
+                        actual_melt = total_m
+                    else:
+                        actual_melt = H_snow_cur
+                        if melt_factor > 0.0:
+                            excess_dd = (total_m - actual_melt) / melt_factor
+                    sp_infiltrated += actual_melt
+                    H_snow_cur     -= actual_melt
+
+                # Temporarily store snowpack deficit as carry for res[0] recharge
+                H_deficit_carry_for_res0 = sp_deficit
+            else:
+                H_deficit_carry_for_res0 = H_deficit_carry
+
+            # ── FGI update ────────────────────────────────────────────────
+            f0_frozen = f_dis[0]   # save calibrated value before possible override
+
+            if use_fgi and not math.isinf(fdd_threshold):
+                T_eff = T_t * math.exp(-snow_insulation_k * H_snow_cur)
+
+                if has_trange:
+                    T_max_t = T_max_arr[step]
+                    T_min_t = T_min_arr[step]
+                    DTR = T_max_t - T_min_t
+                    # NaN comparisons evaluate False → A_t = 1.0 when data absent
+                    if DTR > 0.0 and T_max_t > 0.0:
+                        f_above = T_max_t / DTR
+                        if f_above > 1.0:
+                            f_above = 1.0
+                        A_t = 1.0 - (1.0 - fgi_decay_coeff) * f_above
+                    else:
+                        A_t = 1.0
+                else:
+                    A_t = fgi_decay_coeff
+
+                new_fgi = A_t * fgi_cur - T_eff - excess_dd
+                if new_fgi < 0.0 or math.isnan(new_fgi):
+                    new_fgi = 0.0
+                fgi_cur = new_fgi
+                if fgi_cur > fdd_threshold:
+                    f_dis[0] = 1.0   # frozen ground: all drainage → direct runoff
+
+            # ── Reservoir cascade ─────────────────────────────────────────
+            qi = 0.0
+
+            for r in range(n_res):
+                # --- Recharge ---
+                H_res_excess  = 0.0
+                H_res_deficit = 0.0
+
+                if r == 0:
+                    if has_snowpack:
+                        _rech = sp_infiltrated + H_deficit_carry_for_res0
+                    else:
+                        if use_et_reservoir_draw:
+                            _rech = P_t + H_deficit_carry_for_res0
+                        else:
+                            _rech = P_t - ET_t + H_deficit_carry_for_res0
+
+                    if use_direct_runoff and _rech > 0.0:
+                        q_direct = _rech * direct_runoff_fraction
+                        qi      += q_direct
+                        _rech   -= q_direct
+                else:
+                    _rech = H_infiltrated[r - 1] + H_deficit_res[r - 1]
+
+                new_H = H_res[r] + _rech
+                if new_H < 0.0:
+                    H_res_deficit = new_H   # negative
+                    H_res[r] = 0.0
+                elif (not math.isinf(Hmax_arr[r])) and new_H > Hmax_arr[r]:
+                    H_res_excess = new_H - Hmax_arr[r]
+                    H_res[r]     = Hmax_arr[r]
+                else:
+                    H_res[r] = new_H
+
+                H_deficit_res[r] = H_res_deficit
+
+                # --- Discharge ---
+                b_r  = b_arr[r]
+                H0_r = H_res[r]
+
+                # Threshold junction: recession only above H_threshold
+                if junction_arr[r] == 2:
+                    H_eff = H0_r - H_threshold_arr[r]
+                    if H_eff < 0.0:
+                        H_eff = 0.0
+                else:
+                    H_eff = H0_r
+
+                if b_r == 1.0 or H_eff <= 0.0:
+                    dH = H_eff * (1.0 - math.exp(-dt / tau_arr[r]))
+                else:
+                    # Exact integration: H(t+dt) = [H^(1-b) + (b-1)dt/tau_eff]^(1/(1-b))
+                    tau_eff = tau_arr[r] * (H_ref_arr[r] ** (b_r - 1.0))
+                    arg     = H_eff ** (1.0 - b_r) + (b_r - 1.0) * dt / tau_eff
+                    H_new_r = arg ** (1.0 / (1.0 - b_r)) if arg > 0.0 else 0.0
+                    dH      = H_eff - H_new_r
+                    if dH < 0.0:
+                        dH = 0.0
+
+                # Partition dH: leakance applies to non-bottom reservoirs only
+                is_bottom = (r == n_res - 1)
+                if junction_arr[r] == 1 and not is_bottom:
+                    # Q_leak = min(dH, max(0, H_this - H_next) / R)
+                    diff    = H0_r - H_res[r + 1]   # H_res[r+1] pre-recharge/discharge
+                    if diff < 0.0:
+                        diff = 0.0
+                    Q_leak  = diff / leakance_R_arr[r]
+                    if Q_leak > dH:
+                        Q_leak = dH
+                    H_infiltrated[r] = Q_leak
+                    H_exfiltrated    = dH - Q_leak
+                else:
+                    H_exfiltrated    = dH * f_dis[r]
+                    H_infiltrated[r] = dH * (1.0 - f_dis[r])
+
+                H_discharge = H_res_excess + H_exfiltrated
+                H_res[r]   -= dH
+                qi         += H_discharge
+
+            # Restore calibrated f_to_discharge[0] (undo frozen-ground override)
+            f_dis[0] = f0_frozen
+
+            # Carry deficit from bottom reservoir to next timestep
+            H_deficit_carry = H_deficit_res[n_res - 1]
+
+            # ── ET draw from reservoirs ───────────────────────────────────
+            if use_et_reservoir_draw:
+                demand0 = et_alpha * ET_t
+                avail0  = H_res[0] if H_res[0] > 0.0 else 0.0
+                actual0 = demand0 if demand0 <= avail0 else avail0
+                H_res[0] -= actual0
+
+                if n_res >= 2:
+                    demand1 = (1.0 - et_alpha) * ET_t
+                    if wp_soil > 0.0:
+                        if wp_soil_sigma > 0.0:
+                            # Gaussian CDF: demand scaled; draw from full H
+                            f_avail = 0.5 * (1.0 + math.erf(
+                                (H_res[1] - wp_soil)
+                                / (wp_soil_sigma * math.sqrt(2.0))))
+                            demand1 = demand1 * f_avail
+                            avail1  = H_res[1] if H_res[1] > 0.0 else 0.0
+                        else:
+                            # Hard threshold: no draw below wp_soil
+                            if H_res[1] <= wp_soil:
+                                demand1 = 0.0
+                                avail1  = 0.0
+                            else:
+                                avail1 = H_res[1] - wp_soil
+                    else:
+                        avail1 = H_res[1] if H_res[1] > 0.0 else 0.0
+                    actual1 = demand1 if demand1 <= avail1 else avail1
+                    if actual1 < 0.0:
+                        actual1 = 0.0
+                    H_res[1] -= actual1
+
+            # ── Record outputs ────────────────────────────────────────────
+            Q_out[step]   = qi
+            SWE_out[step] = H_snow_cur
+            H_sub_total   = 0.0
+            for r in range(n_res):
+                H_sub_total += H_res[r]
+            H_sub_out[step] = H_sub_total
+
+        return Q_out, SWE_out, H_sub_out, H_res, H_snow_cur, fgi_cur, H_deficit_carry
 
 
 class Reservoir(object):
@@ -1407,7 +1676,82 @@ class Buckets(object):
                 date_mask &= self.hydrodata['Date'] >= pd.Timestamp(start)
             if end is not None:
                 date_mask &= self.hydrodata['Date'] <= pd.Timestamp(end)
-            for i in self.hydrodata.index[date_mask]:
+            _run_idx = self.hydrodata.index[date_mask]
+        else:
+            _run_idx = None
+
+        # JIT path: available when numba is installed, no tile drains, no PDM,
+        # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
+        _can_jit = (
+            _numba_available
+            and all(r.f_tile == 0.0 for r in self.reservoirs)
+            and all(r.pdm_H0 is None for r in self.reservoirs)
+            and not self.use_et_water_stress
+        )
+
+        if _can_jit:
+            _idx = _run_idx if _run_idx is not None else self.hydrodata.index
+            _hd  = self.hydrodata.loc[_idx]
+
+            _needs_T = self.has_snowpack or (
+                self.use_frozen_ground and not np.isinf(self.fdd_threshold))
+            _T    = (_hd['Mean Temperature [C]'].to_numpy(dtype=np.float64)
+                     if _needs_T
+                     else np.zeros(len(_idx), dtype=np.float64))
+            _Tmin = (_hd['Minimum Temperature [C]'].to_numpy(dtype=np.float64)
+                     if self._has_trange
+                     else np.full(len(_idx), np.nan))
+            _Tmax = (_hd['Maximum Temperature [C]'].to_numpy(dtype=np.float64)
+                     if self._has_trange
+                     else np.full(len(_idx), np.nan))
+
+            _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
+            _Q, _SWE, _Hsub, _finalH, _finalSnow, _finalFgi, _finalDC = _jit_run(
+                _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
+                _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
+                _T, _Tmin, _Tmax,
+                np.array([r.Hwater          for r in self.reservoirs], dtype=np.float64),
+                self.snowpack.Hwater if self.has_snowpack else 0.0,
+                self._fgi,
+                self.H_deficit_carry,
+                np.array([r.t_recession         for r in self.reservoirs], dtype=np.float64),
+                np.array([r.recession_exponent  for r in self.reservoirs], dtype=np.float64),
+                np.array([r.recession_H_ref     for r in self.reservoirs], dtype=np.float64),
+                np.array([r.f_to_discharge      for r in self.reservoirs], dtype=np.float64),
+                np.array([_jmap[r.junction_type] for r in self.reservoirs], dtype=np.int64),
+                np.array([r.leakance_R if r.leakance_R is not None else np.inf
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.H_threshold          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.Hmax                 for r in self.reservoirs], dtype=np.float64),
+                self.melt_factor if self.has_snowpack else 1.0,
+                self.snow_insulation_k,
+                self.fgi_decay_coeff,
+                self.fdd_threshold,
+                self.direct_runoff_fraction,
+                self.wp_soil,
+                self.wp_soil_sigma,
+                self.et_alpha,
+                self.dt,
+                self.has_snowpack,
+                self.use_frozen_ground,
+                self.use_rain_on_snow,
+                self.use_et_reservoir_draw,
+                self.use_direct_runoff,
+                self._has_trange,
+            )
+            self.hydrodata.loc[_idx, 'Specific Discharge (modeled) [mm/day]'] = _Q
+            if self.has_snowpack:
+                self.hydrodata.loc[_idx, 'Snowpack (modeled) [mm SWE]'] = _SWE
+            self.hydrodata.loc[_idx, 'Subsurface storage (modeled total) [mm]'] = _Hsub
+            for _i, _h in enumerate(_finalH):
+                self.reservoirs[_i].Hwater = float(_h)
+            if self.has_snowpack:
+                self.snowpack.Hwater = float(_finalSnow)
+            self._fgi            = float(_finalFgi)
+            self.H_deficit_carry = float(_finalDC)
+
+        elif _run_idx is not None:
+            for i in _run_idx:
                 self.update(time_step=i)
         else:
             for _ in self.hydrodata.index:
