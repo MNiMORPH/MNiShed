@@ -752,6 +752,9 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         b.run(start=start, end=end)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
+        # initialize() runs an internal spin-up that can leave H_deficit_carry at
+        # a large phantom value; reset so the calibration spin-up starts clean.
+        b.H_deficit_carry = 0.0
         for _ in range(spin_up_cycles):
             b.run()
         b.run()
