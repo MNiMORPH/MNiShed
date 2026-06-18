@@ -311,7 +311,7 @@ class Reservoir(object):
     proportional to the amount of water held in the reservoir.
     """
 
-    def __init__(self, t_recession, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
+    def __init__(self, recession_coeff, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
                  H0=0., f_tile=0.0, tau_tile=None,
                  junction_type='fraction', leakance_R=None, H_threshold=0.0):
         """
@@ -319,12 +319,13 @@ class Reservoir(object):
 
         Parameters
         ----------
-        t_recession : float
-            Recession time scale [days]. For a linear reservoir (recession
-            exponent b = 1) this equals the true e-folding time. For b > 1
-            the actual mean residence time depends on storage level; use
-            :meth:`mean_residence_time` to obtain a physically comparable
-            timescale at a given reference discharge.
+        recession_coeff : float
+            Recession coefficient [days]. For a linear reservoir (recession
+            exponent b = 1) this equals the true e-folding timescale. For
+            b > 1 it is not a timescale — the actual mean residence time
+            depends on storage level; use :meth:`mean_residence_time` to
+            obtain a physically comparable timescale at a given reference
+            discharge.
         f_to_discharge : float, optional
             Fraction of water lost each time step that exits as river
             discharge. The remainder (1 - f_to_discharge) infiltrates to
@@ -386,7 +387,7 @@ class Reservoir(object):
         Raises
         ------
         ValueError
-            If t_recession <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
+            If recession_coeff <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
             pdm_H0 <= 0, f_tile < 0 or > 1, f_tile > 0 with no tau_tile,
             junction_type is unrecognised, or junction_type is 'leakance'
             with no leakance_R.
@@ -394,7 +395,7 @@ class Reservoir(object):
         self.Hwater = H0
         self.Hmax = Hmax
         self.pdm_H0 = pdm_H0
-        self.t_recession = t_recession
+        self.recession_coeff = recession_coeff
         self.f_to_discharge = f_to_discharge
         self.junction_type = junction_type
         self.leakance_R    = leakance_R
@@ -409,8 +410,8 @@ class Reservoir(object):
         self.H_discharge = 0.
 
         # Check values and note whether they are reasonable
-        if t_recession <= 0:
-            raise ValueError("t_recession must be > 0.")
+        if recession_coeff <= 0:
+            raise ValueError("recession_coeff must be > 0.")
         if f_to_discharge < 0:
             raise ValueError("Negative f_to_discharge not possible.")
         elif f_to_discharge > 1:
@@ -509,7 +510,7 @@ class Reservoir(object):
         Parameters
         ----------
         dt : float
-            Time step duration (same units as t_recession; typically days).
+            Time step duration (same units as recession_coeff; typically days).
         H_next : float or None, optional
             Current water depth of the next-deeper reservoir [mm].  Used
             only when junction_type is ``'leakance'`` to compute the
@@ -523,13 +524,13 @@ class Reservoir(object):
         H_eff = max(0.0, H0 - self.H_threshold) if self.junction_type == 'threshold' else H0
 
         if b == 1.0 or H_eff <= 0.0:
-            dH = H_eff * (1 - np.exp(-dt / self.t_recession))
+            dH = H_eff * (1 - np.exp(-dt / self.recession_coeff))
         else:
-            # Exact integration of dH/dt = -(H/t_recession)·(H/H_ref)^(b-1)
-            #   = -H^b / (t_recession · H_ref^(b-1))
+            # Exact integration of dH/dt = -(H/recession_coeff)·(H/H_ref)^(b-1)
+            #   = -H^b / (recession_coeff · H_ref^(b-1))
             # Substituting u = H^(1-b):  du/dt = (b-1)/tau_eff
             # => H(t+dt) = [H0^(1-b) + (b-1)·dt/tau_eff]^(1/(1-b))
-            tau_eff = self.t_recession * self.recession_H_ref ** (b - 1.0)
+            tau_eff = self.recession_coeff * self.recession_H_ref ** (b - 1.0)
             H_new   = (H_eff ** (1.0 - b) + (b - 1.0) * dt / tau_eff) ** (1.0 / (1.0 - b))
             dH      = H_eff - max(0.0, H_new)
 
@@ -576,9 +577,9 @@ class Reservoir(object):
         whenever :math:`Q_{\\mathrm{ref}} > 1` mm/day, reflecting the
         faster drainage at realistic operating storage depths.
 
-        Unlike :attr:`t_recession`, which is the recession time scale only at the
-        1 mm reference storage, MRT is a physically comparable timescale
-        across reservoirs with different recession exponents.
+        Unlike :attr:`recession_coeff`, which equals a timescale only when b=1
+        (linear reservoir), MRT is a physically comparable timescale across
+        reservoirs with different recession exponents.
 
         Parameters
         ----------
@@ -601,8 +602,8 @@ class Reservoir(object):
             raise ValueError("Q_ref must be > 0.")
         b = self.recession_exponent
         if b == 1.0:
-            return self.t_recession
-        return self.t_recession ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+            return self.recession_coeff
+        return self.recession_coeff ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
 
 
 class Snowpack(object):
@@ -947,7 +948,7 @@ class Buckets(object):
                                                     [0.0]   * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
-                t_recession    = self.cfg['reservoirs']['recession_timescales__days'][i],
+                recession_coeff = self.cfg['reservoirs']['recession_timescales__days'][i],
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
                 Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
                 pdm_H0         = _pdm_H0[i],
@@ -1727,7 +1728,7 @@ class Buckets(object):
                 self.snowpack.Hwater if self.has_snowpack else 0.0,
                 self._fgi,
                 self.H_deficit_carry,
-                np.array([r.t_recession         for r in self.reservoirs], dtype=np.float64),
+                np.array([r.recession_coeff      for r in self.reservoirs], dtype=np.float64),
                 np.array([r.recession_exponent  for r in self.reservoirs], dtype=np.float64),
                 np.array([r.recession_H_ref     for r in self.reservoirs], dtype=np.float64),
                 np.array([r.f_to_discharge      for r in self.reservoirs], dtype=np.float64),
