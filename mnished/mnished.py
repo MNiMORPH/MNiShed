@@ -44,6 +44,7 @@ if _numba_available:
                  H_init, H_snow_init, fgi_init, H_deficit_carry_init,
                  tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
                  leakance_R_arr, H_threshold_arr, Hmax_arr,
+                 f_tile_arr, tau_tile_arr, H_tile_init,
                  melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
                  direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
                  has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
@@ -51,8 +52,9 @@ if _numba_available:
         """JIT-compiled daily time loop replacing Buckets.run()/update().
 
         Replicates update()/_compute_snowpack()/_update_fgi()/
-        _draw_et_from_reservoirs() exactly for the common case (no tile drains,
-        no PDM, no et_water_stress).  Falls back to the Python loop otherwise.
+        _draw_et_from_reservoirs() exactly for the common case (no PDM,
+        no et_water_stress).  Falls back to the Python loop otherwise.
+        Tile drains (f_tile_arr, tau_tile_arr) are supported.
 
         junction_arr encoding: 0 = fraction, 1 = leakance, 2 = threshold.
         """
@@ -75,6 +77,7 @@ if _numba_available:
         # Per-reservoir cascade working arrays
         H_to_next = np.zeros(n_res)
         H_deficit_res = np.zeros(n_res)
+        H_tile = H_tile_init.copy()
 
         for step in range(n_steps):
             P_t  = P_arr[step]
@@ -255,6 +258,16 @@ if _numba_available:
                 H_res[r]   -= dH
                 qi         += H_discharge
 
+                # Tile drain: intercept f_tile fraction of H_to_next,
+                # route through a linear (b=1) sub-reservoir, discharge to stream.
+                if f_tile_arr[r] > 0.0:
+                    tile_in       = f_tile_arr[r] * H_to_next[r]
+                    H_to_next[r] -= tile_in
+                    H_tile[r]    += tile_in
+                    tile_dH       = H_tile[r] * (1.0 - math.exp(-dt / tau_tile_arr[r]))
+                    H_tile[r]    -= tile_dH
+                    qi           += tile_dH
+
             # Restore calibrated f_to_discharge[0] (undo frozen-ground override)
             f_dis[0] = f0_frozen
 
@@ -297,11 +310,11 @@ if _numba_available:
             SWE_out[step] = H_snow_cur
             H_sub_total   = 0.0
             for r in range(n_res):
-                H_sub_total += H_res[r]
+                H_sub_total += H_res[r] + H_tile[r]
                 H_res_out[step, r] = H_res[r]
             H_sub_out[step] = H_sub_total
 
-        return Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_snow_cur, fgi_cur, H_deficit_carry
+        return Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_tile, H_snow_cur, fgi_cur, H_deficit_carry
 
 
 class Reservoir(object):
@@ -1694,11 +1707,10 @@ class Buckets(object):
             for _i in range(len(self.reservoirs)):
                 self.hydrodata[f'H_reservoir_{_i} (modeled) [mm]'] = pd.NA
 
-        # JIT path: available when numba is installed, no tile drains, no PDM,
+        # JIT path: available when numba is installed, no PDM,
         # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
         _can_jit = (
             _numba_available
-            and all(r.f_tile == 0.0 for r in self.reservoirs)
             and all(r.pdm_H0 is None for r in self.reservoirs)
             and not self.use_et_water_stress
         )
@@ -1720,7 +1732,7 @@ class Buckets(object):
                      else np.full(len(_idx), np.nan))
 
             _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
-            _Q, _SWE, _Hsub, _Hres_out, _finalH, _finalSnow, _finalFgi, _finalDC = _jit_run(
+            _Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow, _finalFgi, _finalDC = _jit_run(
                 _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
                 _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
                 _T, _Tmin, _Tmax,
@@ -1737,6 +1749,11 @@ class Buckets(object):
                           for r in self.reservoirs], dtype=np.float64),
                 np.array([r.H_threshold          for r in self.reservoirs], dtype=np.float64),
                 np.array([r.Hmax                 for r in self.reservoirs], dtype=np.float64),
+                np.array([r.f_tile               for r in self.reservoirs], dtype=np.float64),
+                np.array([r.tile_res.recession_coeff if r.tile_res is not None else 1.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.tile_res.Hwater if r.tile_res is not None else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
                 self.melt_factor if self.has_snowpack else 1.0,
                 self.snow_insulation_k,
                 self.fgi_decay_coeff,
@@ -1762,6 +1779,9 @@ class Buckets(object):
                     self.hydrodata.loc[_idx, f'H_reservoir_{_i} (modeled) [mm]'] = _Hres_out[:, _i]
             for _i, _h in enumerate(_finalH):
                 self.reservoirs[_i].Hwater = float(_h)
+            for _i, _r in enumerate(self.reservoirs):
+                if _r.tile_res is not None:
+                    _r.tile_res.Hwater = float(_finalHTile[_i])
             if self.has_snowpack:
                 self.snowpack.Hwater = float(_finalSnow)
             self._fgi            = float(_finalFgi)
