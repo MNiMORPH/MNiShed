@@ -73,7 +73,7 @@ if _numba_available:
         f_dis = f_dis_in.copy()
 
         # Per-reservoir cascade working arrays
-        H_infiltrated = np.zeros(n_res)
+        H_to_next = np.zeros(n_res)
         H_deficit_res = np.zeros(n_res)
 
         for step in range(n_steps):
@@ -198,7 +198,7 @@ if _numba_available:
                         qi      += q_direct
                         _rech   -= q_direct
                 else:
-                    _rech = H_infiltrated[r - 1] + H_deficit_res[r - 1]
+                    _rech = H_to_next[r - 1] + H_deficit_res[r - 1]
 
                 new_H = H_res[r] + _rech
                 if new_H < 0.0:
@@ -245,11 +245,11 @@ if _numba_available:
                     Q_leak  = diff / leakance_R_arr[r]
                     if Q_leak > dH:
                         Q_leak = dH
-                    H_infiltrated[r] = Q_leak
+                    H_to_next[r] = Q_leak
                     H_exfiltrated    = dH - Q_leak
                 else:
                     H_exfiltrated    = dH * f_dis[r]
-                    H_infiltrated[r] = dH * (1.0 - f_dis[r])
+                    H_to_next[r] = dH * (1.0 - f_dis[r])
 
                 H_discharge = H_res_excess + H_exfiltrated
                 H_res[r]   -= dH
@@ -343,7 +343,7 @@ class Reservoir(object):
         H0 : float, optional
             Initial water depth at the start of the simulation. Default 0.
         f_tile : float, optional
-            Fraction of subsurface drainage (H_infiltrated) that is diverted
+            Fraction of subsurface drainage (H_to_next) that is diverted
             to a fast tile-drain sub-reservoir instead of passing to the
             next-deeper reservoir.  The tile sub-reservoir drains directly to
             stream with e-folding time tau_tile.  Represents agricultural
@@ -405,7 +405,7 @@ class Reservoir(object):
         self.H_excess = 0.
         self.H_deficit = 0.
         self.H_exfiltrated = 0.
-        self.H_infiltrated = 0.
+        self.H_to_next = 0.
         self.H_discharge = 0.
 
         # Check values and note whether they are reasonable
@@ -503,7 +503,7 @@ class Reservoir(object):
 
         Computes water lost by the recession law, partitions it between
         river discharge (H_exfiltrated) and infiltration to the next-deeper
-        reservoir (H_infiltrated) according to junction_type, and adds
+        reservoir (H_to_next) according to junction_type, and adds
         overflow from recharge() (H_excess) to H_discharge.
 
         Parameters
@@ -537,22 +537,22 @@ class Reservoir(object):
         if self.junction_type == 'leakance' and H_next is not None:
             # Head-difference driven flux through confining unit (e.g., shale layer).
             # Q_leak = max(H_this - H_next, 0) / R, capped at available drainage dH.
-            Q_leak             = min(dH, max(0.0, H0 - H_next) / self.leakance_R)
-            self.H_infiltrated = Q_leak
+            Q_leak          = min(dH, max(0.0, H0 - H_next) / self.leakance_R)
+            self.H_to_next  = Q_leak
             self.H_exfiltrated = dH - Q_leak
         else:
             # 'fraction' and 'threshold': fixed f_to_discharge split.
             self.H_exfiltrated = dH * self.f_to_discharge
-            self.H_infiltrated = dH * (1 - self.f_to_discharge)
+            self.H_to_next     = dH * (1 - self.f_to_discharge)
 
         self.H_discharge = self.H_excess + self.H_exfiltrated
         self.Hwater -= dH
 
-        # Tile drainage: divert f_tile of H_infiltrated to the fast sub-reservoir.
+        # Tile drainage: divert f_tile of H_to_next to the fast sub-reservoir.
         # The remainder continues to the next-deeper reservoir as normal.
         if self.tile_res is not None:
-            tile_in = self.f_tile * self.H_infiltrated
-            self.H_infiltrated -= tile_in
+            tile_in = self.f_tile * self.H_to_next
+            self.H_to_next -= tile_in
             self.tile_res.recharge(tile_in)
             self.tile_res.discharge(dt)
             self.H_discharge += self.tile_res.H_discharge
@@ -1576,7 +1576,7 @@ class Buckets(object):
                 # to this model not being physical or distributed, so just
                 # needing to balance mass.
                 self.reservoirs[i].recharge(
-                    self.reservoirs[i-1].H_infiltrated
+                    self.reservoirs[i-1].H_to_next
                     + self.reservoirs[i-1].H_deficit)
             H_next = (self.reservoirs[i + 1].Hwater
                       if i + 1 < len(self.reservoirs) else None)
