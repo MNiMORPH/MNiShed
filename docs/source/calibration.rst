@@ -361,6 +361,81 @@ AIC-based exploration.
      - [3.5, 5.0]
      - ~1000–100,000 days; well-constrained range for bedrock GW
 
+.. _tile-drain-degeneracy:
+
+Tile drain parameter degeneracy
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the explicit tile-drain module (``f_tile``, ``tau_tile``) is used instead of
+letting :math:`b_{\text{soil}} > 1` absorb tile-drain signals implicitly, a
+steady-state parameter degeneracy limits interpretation.
+
+**At steady state**, the tile-drain flux is independent of ``tau_tile``:
+
+.. math::
+
+   Q_{\text{tile}} = f_{\text{tile}} \cdot Q_{\text{to\_next}}
+
+where :math:`Q_{\text{to\_next}}` is the downward percolation from the soil
+reservoir.  The tile sub-reservoir reaches steady state with ``tau_tile``
+controlling only the *lag* (and thus the shape of the recession limb), not
+the long-term mean flux.
+
+**Consequence for calibration**: a water-balance calibration that targets
+decadal-mean fluxes cannot distinguish ``f_tile`` from the product
+:math:`f_{\text{tile}} \cdot \tau_{\text{tile}}`.  Specifically:
+
+.. math::
+
+   f_{\text{tile}} \cdot \tau_{\text{tile}} \;\propto\; A_t
+
+where :math:`A_t` is the areal fraction of the watershed covered by tile drains
+(Hooghoudt 1940).  The calibrated ``f_tile`` alone encodes both areal extent
+*and* the inverse of drain spacing squared — it is not a clean estimate of
+tiled area unless ``tau_tile`` is independently constrained from site data
+(e.g. drain spacing surveys, water-table monitoring, or hydrograph recession
+analysis targeting the tile-drain recession component).
+
+**Time-varying interpretation**: agricultural tile drainage in the Upper Midwest
+expanded and intensified progressively through the 20th century.  Two physical
+processes drive this:
+
+- **Areal expansion** (new tiling): increases ``f_tile`` — more of the watershed
+  routes water through drains.
+- **Intensification** (closer drain spacing): decreases ``tau_tile`` ∝ drain
+  spacing² (Hooghoudt 1940), accelerating the tile-drain response without
+  necessarily changing ``f_tile``.
+
+A per-decade transient calibration that holds ``tau_tile`` fixed and varies only
+``f_tile`` therefore conflates these two processes: a trend in calibrated
+``f_tile`` may reflect new tiling, closer spacing, or both.  Interpreting the
+trend physically requires additional constraint on drain spacing or tile
+installation records.
+
+**Practical guidance**: unless detailed tile-drain records are available,
+treat calibrated ``f_tile`` as a bulk "effective tile-drain efficiency" rather
+than an areal coverage fraction.  Document ``tau_tile`` as a fixed structural
+assumption when reporting results.
+
+**Breaking the degeneracy — a path to physical interpretability**: if
+``tau_tile`` can be independently constrained (from tile-drain mapping,
+water-table monitoring, or recession decomposition), the degeneracy collapses
+and ``f_tile`` recovers its intended physical meaning — the areal fraction of
+the catchment that drains through tiles.  A calibration run that fixes
+``tau_tile`` at a physically motivated value and calibrates only ``f_tile``
+per decade would then produce a direct, comparable time series of effective
+tile-drain coverage, with trend slopes interpretable as rates of agricultural
+drainage expansion.  This is a scientifically meaningful improvement over the
+implicit nonlinear-:math:`b` proxy approach, provided the ``tau_tile``
+constraint is defensible.
+
+Note that the parameter names ``f_tile`` and ``tau_tile`` in the model code
+retain the same names regardless of whether they are calibrated or externally
+constrained.  When ``tau_tile`` is fixed, ``f_tile`` gains the interpretation
+of areal coverage; when both are free, they are individually unidentifiable
+from water-balance data alone.  The documentation (or the params.yml
+``description`` field) should state which regime applies for a given run.
+
 Two-reservoir baseline
 ^^^^^^^^^^^^^^^^^^^^^^
 
