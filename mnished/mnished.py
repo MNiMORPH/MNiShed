@@ -59,9 +59,10 @@ if _numba_available:
         n_steps = len(P_arr)
         n_res   = len(tau_arr)
 
-        Q_out    = np.empty(n_steps)
-        SWE_out  = np.empty(n_steps)
+        Q_out     = np.empty(n_steps)
+        SWE_out   = np.empty(n_steps)
         H_sub_out = np.empty(n_steps)
+        H_res_out = np.empty((n_steps, n_res))
 
         H_res            = H_init.copy()
         H_snow_cur       = H_snow_init
@@ -96,6 +97,7 @@ if _numba_available:
                 H_sub_total = 0.0
                 for r in range(n_res):
                     H_sub_total += H_res[r]
+                    H_res_out[step, r] = H_res[r]
                 H_sub_out[step] = H_sub_total
                 continue
 
@@ -296,9 +298,10 @@ if _numba_available:
             H_sub_total   = 0.0
             for r in range(n_res):
                 H_sub_total += H_res[r]
+                H_res_out[step, r] = H_res[r]
             H_sub_out[step] = H_sub_total
 
-        return Q_out, SWE_out, H_sub_out, H_res, H_snow_cur, fgi_cur, H_deficit_carry
+        return Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_snow_cur, fgi_cur, H_deficit_carry
 
 
 class Reservoir(object):
@@ -1093,6 +1096,7 @@ class Buckets(object):
         self.hydrodata['Specific Discharge (modeled) [mm/day]'] = pd.NA
         self.hydrodata['Snowpack (modeled) [mm SWE]'] = pd.NA
         self.hydrodata['Subsurface storage (modeled total) [mm]'] = pd.NA
+        self._store_depths = False
 
         # Start out at first timestep
         # Could modify this to pick up a run in the middle
@@ -1593,6 +1597,10 @@ class Buckets(object):
             np.sum([res.Hwater for res in self.reservoirs])
             + np.sum([res.tile_res.Hwater for res in self.reservoirs
                       if res.tile_res is not None]))
+        if self._store_depths:
+            for _i, _res in enumerate(self.reservoirs):
+                self.hydrodata.at[time_step,
+                                  f'H_reservoir_{_i} (modeled) [mm]'] = _res.Hwater
 
     def evapotranspiration_Chang2019(self, Tmax=None, Tmin=None, photoperiod=None,
                                     k=0.69):
@@ -1640,7 +1648,7 @@ class Buckets(object):
                                     0.)))
         return ET0
 
-    def run(self, start=None, end=None):
+    def run(self, start=None, end=None, store_depths=False):
         """
         Advance the model through time steps in self.hydrodata.
 
@@ -1680,6 +1688,11 @@ class Buckets(object):
         else:
             _run_idx = None
 
+        self._store_depths = store_depths
+        if store_depths:
+            for _i in range(len(self.reservoirs)):
+                self.hydrodata[f'H_reservoir_{_i} (modeled) [mm]'] = pd.NA
+
         # JIT path: available when numba is installed, no tile drains, no PDM,
         # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
         _can_jit = (
@@ -1706,7 +1719,7 @@ class Buckets(object):
                      else np.full(len(_idx), np.nan))
 
             _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
-            _Q, _SWE, _Hsub, _finalH, _finalSnow, _finalFgi, _finalDC = _jit_run(
+            _Q, _SWE, _Hsub, _Hres_out, _finalH, _finalSnow, _finalFgi, _finalDC = _jit_run(
                 _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
                 _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
                 _T, _Tmin, _Tmax,
@@ -1743,6 +1756,9 @@ class Buckets(object):
             if self.has_snowpack:
                 self.hydrodata.loc[_idx, 'Snowpack (modeled) [mm SWE]'] = _SWE
             self.hydrodata.loc[_idx, 'Subsurface storage (modeled total) [mm]'] = _Hsub
+            if store_depths:
+                for _i in range(len(self.reservoirs)):
+                    self.hydrodata.loc[_idx, f'H_reservoir_{_i} (modeled) [mm]'] = _Hres_out[:, _i]
             for _i, _h in enumerate(_finalH):
                 self.reservoirs[_i].Hwater = float(_h)
             if self.has_snowpack:
