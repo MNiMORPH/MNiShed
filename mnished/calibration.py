@@ -730,6 +730,11 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         # Decade mode: spin up on pre-decade data only, then run the decade.
         pre_decade_end = (pd.Timestamp(start)
                           - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        # H_deficit_carry may have accumulated a large phantom value during
+        # initialize()'s internal spin-up (which runs without et_reservoir_draw).
+        # Reset it before the pre-decade spin-up so the spin-up is physically
+        # clean and its end states are usable as decade initial conditions.
+        b.H_deficit_carry = 0.0
         for _ in range(spin_up_cycles):
             b.run(end=pre_decade_end)
         # Inject post-spin-up reservoir depths if provided (e.g. log__H0_deep).
