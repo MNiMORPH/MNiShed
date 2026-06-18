@@ -698,6 +698,11 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         if b.has_snowpack:
             b.snowpack.Hwater = initial_states.get('snowpack', 0.0)
         b._fgi = initial_states.get('fgi', 0.0)
+        # H_deficit_carry can accumulate a large phantom deficit during
+        # b.initialize()'s internal spin-up (especially with
+        # enforce_water_balance='none').  Reset it so the decade run starts
+        # cleanly from the specified reservoir depths.
+        b.H_deficit_carry = initial_states.get('H_deficit_carry', 0.0)
     else:
         # Analytical steady-state initialization: correct for reservoirs
         # whose timescale exceeds the record length and accelerates spin-up
@@ -735,6 +740,10 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
             for i, h in enumerate(post_spinup_states.get('reservoirs', [])):
                 if h is not None and i < len(b.reservoirs):
                     b.reservoirs[i].Hwater = h
+            if b.has_snowpack:
+                b.snowpack.Hwater = post_spinup_states.get('snowpack', b.snowpack.Hwater)
+            b._fgi = post_spinup_states.get('fgi', b._fgi)
+            b.H_deficit_carry = post_spinup_states.get('H_deficit_carry', 0.0)
         b.run(start=start, end=end)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
@@ -744,9 +753,10 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
 
     # --- Capture end-of-run states for chaining to next decade ---
     final_states = {
-        'reservoirs': [res.Hwater for res in b.reservoirs],
-        'snowpack':   b.snowpack.Hwater if b.has_snowpack else 0.0,
-        'fgi':        b._fgi,
+        'reservoirs':      [res.Hwater for res in b.reservoirs],
+        'snowpack':        b.snowpack.Hwater if b.has_snowpack else 0.0,
+        'fgi':             b._fgi,
+        'H_deficit_carry': b.H_deficit_carry,
     }
 
     # --- Optional: route total runoff through Nash cascade ---
