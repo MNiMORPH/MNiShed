@@ -39,12 +39,12 @@ def test_discharge_linear_exponential_decay():
 
 
 def test_discharge_water_balance():
-    """H_before == H_after + H_exfiltrated + H_infiltrated."""
+    """H_before == H_after + H_exfiltrated + H_to_next."""
     res = Reservoir(recession_coeff=10.0, f_to_discharge=0.6, H0=80.0)
     H_before = res.Hwater
     res.discharge(dt=1.0)
     assert H_before == pytest.approx(
-        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9
+        res.Hwater + res.H_exfiltrated + res.H_to_next, rel=1e-9
     )
 
 
@@ -53,9 +53,9 @@ def test_discharge_partitioning():
     f = 0.3
     res = Reservoir(recession_coeff=10.0, f_to_discharge=f, H0=100.0)
     res.discharge(dt=1.0)
-    total = res.H_exfiltrated + res.H_infiltrated
+    total = res.H_exfiltrated + res.H_to_next
     assert res.H_exfiltrated == pytest.approx(f * total, rel=1e-9)
-    assert res.H_infiltrated == pytest.approx((1 - f) * total, rel=1e-9)
+    assert res.H_to_next == pytest.approx((1 - f) * total, rel=1e-9)
 
 
 def test_discharge_empty_reservoir_produces_nothing():
@@ -146,7 +146,7 @@ def test_nonlinear_discharge_water_balance():
     H_before = res.Hwater
     res.discharge(dt=1.0)
     assert H_before == pytest.approx(
-        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9
+        res.Hwater + res.H_exfiltrated + res.H_to_next, rel=1e-9
     )
 
 
@@ -180,7 +180,7 @@ def test_leakance_all_to_stream_when_reservoirs_equal():
     res = Reservoir(recession_coeff=10.0, leakance_R=100.0,
                     junction_type='leakance', H0=50.0)
     res.discharge(dt=1.0, H_next=50.0)
-    assert res.H_infiltrated == pytest.approx(0.0, abs=1e-12)
+    assert res.H_to_next == pytest.approx(0.0, abs=1e-12)
     assert res.H_exfiltrated == pytest.approx(res.H_discharge, abs=1e-12)
 
 
@@ -192,18 +192,18 @@ def test_leakance_all_infiltrates_when_head_difference_large():
     res.discharge(dt=1.0, H_next=0.0)
     # Q_leak = (50 - 0) / 0.01 = 5000 >> dH; should be capped at dH
     assert res.H_exfiltrated == pytest.approx(0.0, abs=1e-9)
-    assert res.H_infiltrated == pytest.approx(
-        res.H_infiltrated + res.H_exfiltrated, rel=1e-9)
+    assert res.H_to_next == pytest.approx(
+        res.H_to_next + res.H_exfiltrated, rel=1e-9)
 
 
 def test_leakance_water_balance():
-    """H_before == H_after + H_exfiltrated + H_infiltrated for leakance."""
+    """H_before == H_after + H_exfiltrated + H_to_next for leakance."""
     res = Reservoir(recession_coeff=10.0, leakance_R=50.0,
                     junction_type='leakance', H0=80.0)
     H_before = res.Hwater
     res.discharge(dt=1.0, H_next=20.0)
     assert H_before == pytest.approx(
-        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9)
+        res.Hwater + res.H_exfiltrated + res.H_to_next, rel=1e-9)
 
 
 def test_leakance_more_to_next_when_head_difference_larger():
@@ -216,7 +216,7 @@ def test_leakance_more_to_next_when_head_difference_larger():
                           junction_type='leakance', H0=80.0)
     res_large.discharge(dt=1.0, H_next=10.0)
 
-    assert res_large.H_infiltrated > res_small.H_infiltrated
+    assert res_large.H_to_next > res_small.H_to_next
 
 
 def test_threshold_no_drainage_below_threshold():
@@ -249,4 +249,4 @@ def test_threshold_water_balance():
     H_before = res.Hwater
     res.discharge(dt=1.0)
     assert H_before == pytest.approx(
-        res.Hwater + res.H_exfiltrated + res.H_infiltrated, rel=1e-9)
+        res.Hwater + res.H_exfiltrated + res.H_to_next, rel=1e-9)
