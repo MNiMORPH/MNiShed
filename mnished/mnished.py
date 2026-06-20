@@ -1055,6 +1055,10 @@ class Buckets(object):
                                                     [None]  * self.n_reservoirs)
         _H_threshold      = self.cfg['reservoirs'].get('H_threshold__mm',
                                                     [0.0]   * self.n_reservoirs)
+        _mp_threshold     = self.cfg['reservoirs'].get('multipath_thresholds__mm',
+                                                    [None]  * self.n_reservoirs)
+        _mp_timescale     = self.cfg['reservoirs'].get('multipath_timescales__days',
+                                                    [None]  * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
                 recession_coeff = self.cfg['reservoirs']['recession_timescales__days'][i],
@@ -1067,6 +1071,8 @@ class Buckets(object):
                 junction_type  = _junction_types[i],
                 leakance_R     = _leakance_R[i],
                 H_threshold    = _H_threshold[i] if _H_threshold[i] is not None else 0.0,
+                multipath_threshold = _mp_threshold[i],
+                multipath_timescale = _mp_timescale[i],
             )
             for i in range(self.n_reservoirs)]
         for i, b_exp in enumerate(_recession_exp):
