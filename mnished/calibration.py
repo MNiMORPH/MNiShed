@@ -364,6 +364,8 @@ def _steady_state_depths(reservoirs, mean_q):
 
 def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   pdm_H0=None, f_tile=None, tau_tile=None,
+                  multipath_threshold=None, multipath_timescale=None,
+                  multipath_calibrated=0,
                   leakance_R=None, leakance_R_calibrated=0,
                   H_threshold=None, H_threshold_calibrated=0,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
@@ -409,6 +411,24 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     H_threshold_calibrated : int, optional
         Number of entries in ``H_threshold`` that are free calibration
         parameters (for AIC k-counting).  Default 0.
+    multipath_threshold : list of float or None, optional
+        Storage depth [mm] above which a parallel fast drain activates,
+        per reservoir.  ``None`` entries leave the reservoir's multipath
+        configuration unchanged from cfg.  Non-None entries enable a
+        threshold-activated parallel drain that adds
+        ``max(0, H - thr)/multipath_timescale`` to discharge above the
+        threshold.  Distinct from ``f_tile``/``tau_tile`` (which is a
+        constant-fraction bypass through a downstream sub-reservoir);
+        see :class:`mnished.Reservoir` for the contrast.
+        Requires the matching ``multipath_timescale`` entry to be non-None.
+        Default None.
+    multipath_timescale : list of float or None, optional
+        E-folding timescale [days] of the parallel multipath drain, per
+        reservoir.  Required paired with ``multipath_threshold``.
+        Default None.
+    multipath_calibrated : int, optional
+        Number of free parameters contributed by multipath_threshold +
+        multipath_timescale combined (for AIC k-counting).  Default 0.
     Hmax : list of float, optional
         Maximum effective water depths [mm], one per reservoir. Overrides
         the values in cfg.
@@ -602,6 +622,28 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                 b.reservoirs[i].H_threshold = val
                 b.reservoirs[i].junction_type = 'threshold'
         k += H_threshold_calibrated
+
+    if multipath_threshold is not None or multipath_timescale is not None:
+        # Both lists must be supplied if either is, and must be the same length.
+        if multipath_threshold is None or multipath_timescale is None:
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must be "
+                "provided together (or both omitted).")
+        if len(multipath_threshold) != len(multipath_timescale):
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must have "
+                "the same length.")
+        for i, (thr, tau) in enumerate(zip(multipath_threshold,
+                                            multipath_timescale)):
+            if i >= len(b.reservoirs):
+                break
+            if (thr is None) ^ (tau is None):
+                raise ValueError(
+                    f"Reservoir {i}: multipath_threshold and "
+                    "multipath_timescale must be both None or both set.")
+            b.reservoirs[i].multipath_threshold = thr
+            b.reservoirs[i].multipath_timescale = tau
+        k += multipath_calibrated
 
     if Hmax is not None:
         for i, val in enumerate(Hmax):
