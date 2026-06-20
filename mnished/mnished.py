@@ -45,6 +45,7 @@ if _numba_available:
                  tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
                  leakance_R_arr, H_threshold_arr, Hmax_arr,
                  f_tile_arr, tau_tile_arr, H_tile_init,
+                 multipath_thr_arr, multipath_tau_arr,
                  melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
                  direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
                  has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
@@ -54,7 +55,16 @@ if _numba_available:
         Replicates update()/_compute_snowpack()/_update_fgi()/
         _draw_et_from_reservoirs() exactly for the common case (no PDM,
         no et_water_stress).  Falls back to the Python loop otherwise.
-        Tile drains (f_tile_arr, tau_tile_arr) are supported.
+
+        Two tile-drain mechanisms are supported (independently or together):
+          - Constant-fraction bypass (``f_tile_arr``/``tau_tile_arr``):
+            a fraction of recession outflow is routed through a downstream
+            fast linear sub-reservoir, regardless of storage state.
+          - Multipath threshold-activated parallel drain
+            (``multipath_thr_arr``/``multipath_tau_arr``): a second linear
+            outflow path operates from the same storage but only when the
+            reservoir depth exceeds the threshold. ``multipath_tau_arr[r] <= 0``
+            disables the multipath drain for reservoir *r*.
 
         junction_arr encoding: 0 = fraction, 1 = leakance, 2 = threshold.
         """
@@ -267,6 +277,19 @@ if _numba_available:
                     tile_dH       = H_tile[r] * (1.0 - math.exp(-dt / tau_tile_arr[r]))
                     H_tile[r]    -= tile_dH
                     qi           += tile_dH
+
+                # Multipath drainage: a parallel fast path from this reservoir
+                # direct to stream, active when storage exceeds the threshold.
+                # Applied after primary recession via operator splitting
+                # (first-order accurate; acceptable at daily dt). Bypasses the
+                # junction/f_to_discharge partition.
+                if multipath_tau_arr[r] > 0.0:
+                    H_above_mp = H_res[r] - multipath_thr_arr[r]
+                    if H_above_mp > 0.0:
+                        dH_mp        = H_above_mp * (
+                            1.0 - math.exp(-dt / multipath_tau_arr[r]))
+                        H_res[r]    -= dH_mp
+                        qi          += dH_mp
 
             # Restore calibrated f_to_discharge[0] (undo frozen-ground override)
             f_dis[0] = f0_frozen
@@ -1826,6 +1849,10 @@ class Buckets(object):
                 np.array([r.tile_res.recession_coeff if r.tile_res is not None else 1.0
                           for r in self.reservoirs], dtype=np.float64),
                 np.array([r.tile_res.Hwater if r.tile_res is not None else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.multipath_threshold if r.has_multipath else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.multipath_timescale if r.has_multipath else 0.0
                           for r in self.reservoirs], dtype=np.float64),
                 self.melt_factor if self.has_snowpack else 1.0,
                 self.snow_insulation_k,
