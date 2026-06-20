@@ -186,7 +186,7 @@ class HydrographSeparation:
     def get_parameter_priors(self):
         """
         Suggested initial values and bounds (in params.yml units) for the
-        MNiShed log__t_recession_* calibration parameters.
+        MNiShed log__recession_coeff_* calibration parameters.
 
         Bounds are ±0.5 in log10 around the estimated timescale — wide enough
         to allow the optimizer freedom, tight enough to stay physical.
@@ -198,7 +198,7 @@ class HydrographSeparation:
             ``'initial'``, ``'lower'``, ``'upper'`` in log10(days).
         """
         self._check_fitted()
-        all_names = ['log__t_recession_shallow', 'log__t_recession_soil', 'log__t_recession_karst']
+        all_names = ['log__recession_coeff_shallow', 'log__recession_coeff_soil', 'log__recession_coeff_karst']
         tau_fast_to_slow = self.tau[::-1]   # shallow first, karst last
         n = len(tau_fast_to_slow)
         # Always end with karst; fill fast slots from the front.
@@ -210,7 +210,7 @@ class HydrographSeparation:
                 # For τ_soil, fall back to the time-domain rolling-minimum
                 # estimate (not used for LP separation but good enough as a
                 # prior hint — still biased low, so bounds are left wide).
-                if name == 'log__t_recession_soil' and self._tau_soil_td is not None:
+                if name == 'log__recession_coeff_soil' and self._tau_soil_td is not None:
                     tau_i = self._tau_soil_td
                 else:
                     priors[name] = None   # could not be estimated; keep params.yml defaults

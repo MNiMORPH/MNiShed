@@ -327,7 +327,7 @@ def _steady_state_depths(reservoirs, mean_q):
     Parameters
     ----------
     reservoirs : list of Reservoir
-        Ordered shallowest to deepest; each has .t_recession, .f_to_discharge,
+        Ordered shallowest to deepest; each has .recession_coeff, .f_to_discharge,
         and .Hmax attributes.
     mean_q : float
         Long-run mean specific discharge [mm/day], used as the steady-state
@@ -351,7 +351,7 @@ def _steady_state_depths(reservoirs, mean_q):
     depths = []
     q_in = float(mean_q)
     for res in reservoirs:
-        H_eq = q_in / (np.exp(1.0 / res.t_recession) - 1.0)
+        H_eq = q_in / (np.exp(1.0 / res.recession_coeff) - 1.0)
         depths.append(min(H_eq, res.Hmax))
         # Tile drainage reduces the recharge reaching the next reservoir.
         q_in *= (1.0 - res.f_to_discharge) * (1.0 - res.f_tile)
@@ -362,8 +362,10 @@ def _steady_state_depths(reservoirs, mean_q):
 # Public API
 # ---------------------------------------------------------------------------
 
-def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
+def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   pdm_H0=None, f_tile=None, tau_tile=None,
+                  multipath_threshold=None, multipath_timescale=None,
+                  multipath_calibrated=0,
                   leakance_R=None, leakance_R_calibrated=0,
                   H_threshold=None, H_threshold_calibrated=0,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
@@ -385,8 +387,8 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     cfg : str
         Path to a YAML configuration file. Should have spin_up_cycles: 0
         so that spin-up is performed here with the calibrated parameters.
-    t_recession : list of float, optional
-        Recession time scales [days], one per reservoir (shallowest
+    recession_coeff : list of float, optional
+        Recession coefficients [days], one per reservoir (shallowest
         first). Overrides the values in cfg.
     f_to_discharge : list of float, optional
         Exfiltration fractions to stream, one per reservoir except the
@@ -409,6 +411,24 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     H_threshold_calibrated : int, optional
         Number of entries in ``H_threshold`` that are free calibration
         parameters (for AIC k-counting).  Default 0.
+    multipath_threshold : list of float or None, optional
+        Storage depth [mm] above which a parallel fast drain activates,
+        per reservoir.  ``None`` entries leave the reservoir's multipath
+        configuration unchanged from cfg.  Non-None entries enable a
+        threshold-activated parallel drain that adds
+        ``max(0, H - thr)/multipath_timescale`` to discharge above the
+        threshold.  Distinct from ``f_tile``/``tau_tile`` (which is a
+        constant-fraction bypass through a downstream sub-reservoir);
+        see :class:`mnished.Reservoir` for the contrast.
+        Requires the matching ``multipath_timescale`` entry to be non-None.
+        Default None.
+    multipath_timescale : list of float or None, optional
+        E-folding timescale [days] of the parallel multipath drain, per
+        reservoir.  Required paired with ``multipath_threshold``.
+        Default None.
+    multipath_calibrated : int, optional
+        Number of free parameters contributed by multipath_threshold +
+        multipath_timescale combined (for AIC k-counting).  Default 0.
     Hmax : list of float, optional
         Maximum effective water depths [mm], one per reservoir. Overrides
         the values in cfg.
@@ -578,15 +598,16 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
     # --- Parameter overrides and free-parameter count ---
     k = 0
 
-    if t_recession is not None:
-        for i, val in enumerate(t_recession):
-            b.reservoirs[i].t_recession = val
-        k += len(t_recession)
+    if recession_coeff is not None:
+        for i, val in enumerate(recession_coeff):
+            b.reservoirs[i].recession_coeff = val
+        k += len(recession_coeff)
 
     if f_to_discharge is not None:
         for i, val in enumerate(f_to_discharge):
-            b.reservoirs[i].f_to_discharge = val
-        k += len(f_to_discharge)
+            if val is not None:
+                b.reservoirs[i].f_to_discharge = val
+        k += sum(1 for v in f_to_discharge if v is not None)
 
     if leakance_R is not None:
         for i, val in enumerate(leakance_R):
@@ -601,6 +622,28 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
                 b.reservoirs[i].H_threshold = val
                 b.reservoirs[i].junction_type = 'threshold'
         k += H_threshold_calibrated
+
+    if multipath_threshold is not None or multipath_timescale is not None:
+        # Both lists must be supplied if either is, and must be the same length.
+        if multipath_threshold is None or multipath_timescale is None:
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must be "
+                "provided together (or both omitted).")
+        if len(multipath_threshold) != len(multipath_timescale):
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must have "
+                "the same length.")
+        for i, (thr, tau) in enumerate(zip(multipath_threshold,
+                                            multipath_timescale)):
+            if i >= len(b.reservoirs):
+                break
+            if (thr is None) ^ (tau is None):
+                raise ValueError(
+                    f"Reservoir {i}: multipath_threshold and "
+                    "multipath_timescale must be both None or both set.")
+            b.reservoirs[i].multipath_threshold = thr
+            b.reservoirs[i].multipath_timescale = tau
+        k += multipath_calibrated
 
     if Hmax is not None:
         for i, val in enumerate(Hmax):
@@ -697,6 +740,11 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
         if b.has_snowpack:
             b.snowpack.Hwater = initial_states.get('snowpack', 0.0)
         b._fgi = initial_states.get('fgi', 0.0)
+        # H_deficit_carry can accumulate a large phantom deficit during
+        # b.initialize()'s internal spin-up (especially with
+        # enforce_water_balance='none').  Reset it so the decade run starts
+        # cleanly from the specified reservoir depths.
+        b.H_deficit_carry = initial_states.get('H_deficit_carry', 0.0)
     else:
         # Analytical steady-state initialization: correct for reservoirs
         # whose timescale exceeds the record length and accelerates spin-up
@@ -717,13 +765,18 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
 
     # --- Spin up, then final scored run ---
     if spin_up_cycles is None:
-        tau_max = max(r.t_recession for r in b.reservoirs)
+        tau_max = max(r.recession_coeff for r in b.reservoirs)
         spin_up_cycles = math.ceil(tau_max / len(b.hydrodata))
 
     if start is not None:
         # Decade mode: spin up on pre-decade data only, then run the decade.
         pre_decade_end = (pd.Timestamp(start)
                           - pd.Timedelta(days=1)).strftime('%Y-%m-%d')
+        # H_deficit_carry may have accumulated a large phantom value during
+        # initialize()'s internal spin-up (which runs without et_reservoir_draw).
+        # Reset it before the pre-decade spin-up so the spin-up is physically
+        # clean and its end states are usable as decade initial conditions.
+        b.H_deficit_carry = 0.0
         for _ in range(spin_up_cycles):
             b.run(end=pre_decade_end)
         # Inject post-spin-up reservoir depths if provided (e.g. log__H0_deep).
@@ -734,18 +787,26 @@ def run_and_score(cfg, t_recession=None, f_to_discharge=None, Hmax=None,
             for i, h in enumerate(post_spinup_states.get('reservoirs', [])):
                 if h is not None and i < len(b.reservoirs):
                     b.reservoirs[i].Hwater = h
+            if b.has_snowpack:
+                b.snowpack.Hwater = post_spinup_states.get('snowpack', b.snowpack.Hwater)
+            b._fgi = post_spinup_states.get('fgi', b._fgi)
+            b.H_deficit_carry = post_spinup_states.get('H_deficit_carry', 0.0)
         b.run(start=start, end=end)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
+        # initialize() runs an internal spin-up that can leave H_deficit_carry at
+        # a large phantom value; reset so the calibration spin-up starts clean.
+        b.H_deficit_carry = 0.0
         for _ in range(spin_up_cycles):
             b.run()
         b.run()
 
     # --- Capture end-of-run states for chaining to next decade ---
     final_states = {
-        'reservoirs': [res.Hwater for res in b.reservoirs],
-        'snowpack':   b.snowpack.Hwater if b.has_snowpack else 0.0,
-        'fgi':        b._fgi,
+        'reservoirs':      [res.Hwater for res in b.reservoirs],
+        'snowpack':        b.snowpack.Hwater if b.has_snowpack else 0.0,
+        'fgi':             b._fgi,
+        'H_deficit_carry': b.H_deficit_carry,
     }
 
     # --- Optional: route total runoff through Nash cascade ---

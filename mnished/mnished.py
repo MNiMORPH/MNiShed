@@ -26,10 +26,318 @@ import pandas as pd
 import yaml
 from matplotlib import pyplot as plt
 
+try:
+    import numba as _numba
+    _numba_available = True
+except ImportError:
+    _numba_available = False
+
 # c_p / L_f: water's specific heat divided by the latent heat of fusion.
 # c_p = 4186 J kg⁻¹ °C⁻¹, L_f = 334 000 J kg⁻¹  →  ≈ 0.01253 °C⁻¹
 # Gives mm SWE melted per mm of rain per °C of rain temperature.
 _CP_LF = 4186.0 / 334000.0
+
+
+if _numba_available:
+    @_numba.jit(nopython=True, cache=True)
+    def _jit_run(P_arr, ET_arr, T_arr, T_min_arr, T_max_arr,
+                 H_init, H_snow_init, fgi_init, H_deficit_carry_init,
+                 tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
+                 leakance_R_arr, H_threshold_arr, Hmax_arr,
+                 f_tile_arr, tau_tile_arr, H_tile_init,
+                 multipath_thr_arr, multipath_tau_arr,
+                 melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
+                 direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
+                 has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
+                 use_direct_runoff, has_trange):
+        """JIT-compiled daily time loop replacing Buckets.run()/update().
+
+        Replicates update()/_compute_snowpack()/_update_fgi()/
+        _draw_et_from_reservoirs() exactly for the common case (no PDM,
+        no et_water_stress).  Falls back to the Python loop otherwise.
+
+        Two tile-drain mechanisms are supported (independently or together):
+          - Constant-fraction bypass (``f_tile_arr``/``tau_tile_arr``):
+            a fraction of recession outflow is routed through a downstream
+            fast linear sub-reservoir, regardless of storage state.
+          - Multipath threshold-activated parallel drain
+            (``multipath_thr_arr``/``multipath_tau_arr``): a second linear
+            outflow path operates from the same storage but only when the
+            reservoir depth exceeds the threshold. ``multipath_tau_arr[r] <= 0``
+            disables the multipath drain for reservoir *r*.
+
+        junction_arr encoding: 0 = fraction, 1 = leakance, 2 = threshold.
+        """
+        n_steps = len(P_arr)
+        n_res   = len(tau_arr)
+
+        Q_out     = np.empty(n_steps)
+        SWE_out   = np.empty(n_steps)
+        H_sub_out = np.empty(n_steps)
+        H_res_out = np.empty((n_steps, n_res))
+
+        H_res            = H_init.copy()
+        H_snow_cur       = H_snow_init
+        fgi_cur          = fgi_init
+        H_deficit_carry  = H_deficit_carry_init
+
+        # Local copy of f_to_discharge — frozen-ground overrides res[0] temporarily
+        f_dis = f_dis_in.copy()
+
+        # Per-reservoir cascade working arrays
+        H_to_next = np.zeros(n_res)
+        H_deficit_res = np.zeros(n_res)
+        H_tile = H_tile_init.copy()
+
+        for step in range(n_steps):
+            P_t  = P_arr[step]
+            ET_t = ET_arr[step]
+            T_t  = 0.0
+
+            # Read temperature when needed by snowpack or FGI
+            if has_snowpack or use_fgi:
+                T_t = T_arr[step]
+
+            # Skip step if any required forcing is NaN.
+            # T NaN only triggers skip when snowpack is active (matches Python).
+            skip = math.isnan(P_t) or math.isnan(ET_t)
+            if has_snowpack and not skip:
+                skip = math.isnan(T_t)
+
+            if skip:
+                Q_out[step]    = np.nan
+                SWE_out[step]  = H_snow_cur
+                H_sub_total = 0.0
+                for r in range(n_res):
+                    H_sub_total += H_res[r]
+                    H_res_out[step, r] = H_res[r]
+                H_sub_out[step] = H_sub_total
+                continue
+
+            # ── Snowpack ──────────────────────────────────────────────────
+            sp_infiltrated = 0.0
+            sp_deficit     = 0.0
+            excess_dd      = 0.0
+
+            if has_snowpack:
+                if use_et_reservoir_draw:
+                    sp_recharge = P_t + H_deficit_carry
+                else:
+                    sp_recharge = P_t - ET_t + H_deficit_carry
+
+                # Snowpack.recharge(sp_recharge)
+                if sp_recharge >= 0.0:
+                    if T_t <= 0.0:
+                        H_snow_cur += sp_recharge
+                        # sp_infiltrated stays 0
+                    else:
+                        sp_infiltrated = sp_recharge
+                else:
+                    # Sublimation; deficit if snow insufficient
+                    if H_snow_cur > -sp_recharge:
+                        H_snow_cur += sp_recharge
+                    else:
+                        sp_deficit = sp_recharge + H_snow_cur
+                        H_snow_cur = 0.0
+                    # sp_infiltrated stays 0
+
+                # Snowpack.melt(dt, P)
+                if T_t > 0.0:
+                    pdd     = melt_factor * T_t * dt
+                    ros_P   = P_t if use_rain_on_snow else 0.0
+                    ros     = _CP_LF * T_t * ros_P
+                    total_m = pdd + ros
+                    if total_m <= H_snow_cur:
+                        actual_melt = total_m
+                    else:
+                        actual_melt = H_snow_cur
+                        if melt_factor > 0.0:
+                            excess_dd = (total_m - actual_melt) / melt_factor
+                    sp_infiltrated += actual_melt
+                    H_snow_cur     -= actual_melt
+
+                # Temporarily store snowpack deficit as carry for res[0] recharge
+                H_deficit_carry_for_res0 = sp_deficit
+            else:
+                H_deficit_carry_for_res0 = H_deficit_carry
+
+            # ── FGI update ────────────────────────────────────────────────
+            f0_frozen = f_dis[0]   # save calibrated value before possible override
+
+            if use_fgi and not math.isinf(fdd_threshold):
+                T_eff = T_t * math.exp(-snow_insulation_k * H_snow_cur)
+
+                if has_trange:
+                    T_max_t = T_max_arr[step]
+                    T_min_t = T_min_arr[step]
+                    DTR = T_max_t - T_min_t
+                    # NaN comparisons evaluate False → A_t = 1.0 when data absent
+                    if DTR > 0.0 and T_max_t > 0.0:
+                        f_above = T_max_t / DTR
+                        if f_above > 1.0:
+                            f_above = 1.0
+                        A_t = 1.0 - (1.0 - fgi_decay_coeff) * f_above
+                    else:
+                        A_t = 1.0
+                else:
+                    A_t = fgi_decay_coeff
+
+                new_fgi = A_t * fgi_cur - T_eff - excess_dd
+                if new_fgi < 0.0 or math.isnan(new_fgi):
+                    new_fgi = 0.0
+                fgi_cur = new_fgi
+                if fgi_cur > fdd_threshold:
+                    f_dis[0] = 1.0   # frozen ground: all drainage → direct runoff
+
+            # ── Reservoir cascade ─────────────────────────────────────────
+            qi = 0.0
+
+            for r in range(n_res):
+                # --- Recharge ---
+                H_res_excess  = 0.0
+                H_res_deficit = 0.0
+
+                if r == 0:
+                    if has_snowpack:
+                        _rech = sp_infiltrated + H_deficit_carry_for_res0
+                    else:
+                        if use_et_reservoir_draw:
+                            _rech = P_t + H_deficit_carry_for_res0
+                        else:
+                            _rech = P_t - ET_t + H_deficit_carry_for_res0
+
+                    if use_direct_runoff and _rech > 0.0:
+                        q_direct = _rech * direct_runoff_fraction
+                        qi      += q_direct
+                        _rech   -= q_direct
+                else:
+                    _rech = H_to_next[r - 1] + H_deficit_res[r - 1]
+
+                new_H = H_res[r] + _rech
+                if new_H < 0.0:
+                    H_res_deficit = new_H   # negative
+                    H_res[r] = 0.0
+                elif (not math.isinf(Hmax_arr[r])) and new_H > Hmax_arr[r]:
+                    H_res_excess = new_H - Hmax_arr[r]
+                    H_res[r]     = Hmax_arr[r]
+                else:
+                    H_res[r] = new_H
+
+                H_deficit_res[r] = H_res_deficit
+
+                # --- Discharge ---
+                b_r  = b_arr[r]
+                H0_r = H_res[r]
+
+                # Threshold junction: recession only above H_threshold
+                if junction_arr[r] == 2:
+                    H_eff = H0_r - H_threshold_arr[r]
+                    if H_eff < 0.0:
+                        H_eff = 0.0
+                else:
+                    H_eff = H0_r
+
+                if b_r == 1.0 or H_eff <= 0.0:
+                    dH = H_eff * (1.0 - math.exp(-dt / tau_arr[r]))
+                else:
+                    # Exact integration: H(t+dt) = [H^(1-b) + (b-1)dt/tau_eff]^(1/(1-b))
+                    tau_eff = tau_arr[r] * (H_ref_arr[r] ** (b_r - 1.0))
+                    arg     = H_eff ** (1.0 - b_r) + (b_r - 1.0) * dt / tau_eff
+                    H_new_r = arg ** (1.0 / (1.0 - b_r)) if arg > 0.0 else 0.0
+                    dH      = H_eff - H_new_r
+                    if dH < 0.0:
+                        dH = 0.0
+
+                # Partition dH: leakance applies to non-bottom reservoirs only
+                is_bottom = (r == n_res - 1)
+                if junction_arr[r] == 1 and not is_bottom:
+                    # Q_leak = min(dH, max(0, H_this - H_next) / R)
+                    diff    = H0_r - H_res[r + 1]   # H_res[r+1] pre-recharge/discharge
+                    if diff < 0.0:
+                        diff = 0.0
+                    Q_leak  = diff / leakance_R_arr[r]
+                    if Q_leak > dH:
+                        Q_leak = dH
+                    H_to_next[r] = Q_leak
+                    H_exfiltrated    = dH - Q_leak
+                else:
+                    H_exfiltrated    = dH * f_dis[r]
+                    H_to_next[r] = dH * (1.0 - f_dis[r])
+
+                H_discharge = H_res_excess + H_exfiltrated
+                H_res[r]   -= dH
+                qi         += H_discharge
+
+                # Tile drain: intercept f_tile fraction of H_to_next,
+                # route through a linear (b=1) sub-reservoir, discharge to stream.
+                if f_tile_arr[r] > 0.0:
+                    tile_in       = f_tile_arr[r] * H_to_next[r]
+                    H_to_next[r] -= tile_in
+                    H_tile[r]    += tile_in
+                    tile_dH       = H_tile[r] * (1.0 - math.exp(-dt / tau_tile_arr[r]))
+                    H_tile[r]    -= tile_dH
+                    qi           += tile_dH
+
+                # Multipath drainage: a parallel fast path from this reservoir
+                # direct to stream, active when storage exceeds the threshold.
+                # Applied after primary recession via operator splitting
+                # (first-order accurate; acceptable at daily dt). Bypasses the
+                # junction/f_to_discharge partition.
+                if multipath_tau_arr[r] > 0.0:
+                    H_above_mp = H_res[r] - multipath_thr_arr[r]
+                    if H_above_mp > 0.0:
+                        dH_mp        = H_above_mp * (
+                            1.0 - math.exp(-dt / multipath_tau_arr[r]))
+                        H_res[r]    -= dH_mp
+                        qi          += dH_mp
+
+            # Restore calibrated f_to_discharge[0] (undo frozen-ground override)
+            f_dis[0] = f0_frozen
+
+            # Carry deficit from bottom reservoir to next timestep
+            H_deficit_carry = H_deficit_res[n_res - 1]
+
+            # ── ET draw from reservoirs ───────────────────────────────────
+            if use_et_reservoir_draw:
+                demand0 = et_alpha * ET_t
+                avail0  = H_res[0] if H_res[0] > 0.0 else 0.0
+                actual0 = demand0 if demand0 <= avail0 else avail0
+                H_res[0] -= actual0
+
+                if n_res >= 2:
+                    demand1 = (1.0 - et_alpha) * ET_t
+                    if wp_soil > 0.0:
+                        if wp_soil_sigma > 0.0:
+                            # Gaussian CDF: demand scaled; draw from full H
+                            f_avail = 0.5 * (1.0 + math.erf(
+                                (H_res[1] - wp_soil)
+                                / (wp_soil_sigma * math.sqrt(2.0))))
+                            demand1 = demand1 * f_avail
+                            avail1  = H_res[1] if H_res[1] > 0.0 else 0.0
+                        else:
+                            # Hard threshold: no draw below wp_soil
+                            if H_res[1] <= wp_soil:
+                                demand1 = 0.0
+                                avail1  = 0.0
+                            else:
+                                avail1 = H_res[1] - wp_soil
+                    else:
+                        avail1 = H_res[1] if H_res[1] > 0.0 else 0.0
+                    actual1 = demand1 if demand1 <= avail1 else avail1
+                    if actual1 < 0.0:
+                        actual1 = 0.0
+                    H_res[1] -= actual1
+
+            # ── Record outputs ────────────────────────────────────────────
+            Q_out[step]   = qi
+            SWE_out[step] = H_snow_cur
+            H_sub_total   = 0.0
+            for r in range(n_res):
+                H_sub_total += H_res[r] + H_tile[r]
+                H_res_out[step, r] = H_res[r]
+            H_sub_out[step] = H_sub_total
+
+        return Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_tile, H_snow_cur, fgi_cur, H_deficit_carry
 
 
 class Reservoir(object):
@@ -39,20 +347,22 @@ class Reservoir(object):
     proportional to the amount of water held in the reservoir.
     """
 
-    def __init__(self, t_recession, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
+    def __init__(self, recession_coeff, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
                  H0=0., f_tile=0.0, tau_tile=None,
-                 junction_type='fraction', leakance_R=None, H_threshold=0.0):
+                 junction_type='fraction', leakance_R=None, H_threshold=0.0,
+                 multipath_threshold=None, multipath_timescale=None):
         """
         Initialize a reservoir.
 
         Parameters
         ----------
-        t_recession : float
-            Recession time scale [days]. For a linear reservoir (recession
-            exponent b = 1) this equals the true e-folding time. For b > 1
-            the actual mean residence time depends on storage level; use
-            :meth:`mean_residence_time` to obtain a physically comparable
-            timescale at a given reference discharge.
+        recession_coeff : float
+            Recession coefficient [days]. For a linear reservoir (recession
+            exponent b = 1) this equals the true e-folding timescale. For
+            b > 1 it is not a timescale — the actual mean residence time
+            depends on storage level; use :meth:`mean_residence_time` to
+            obtain a physically comparable timescale at a given reference
+            discharge.
         f_to_discharge : float, optional
             Fraction of water lost each time step that exits as river
             discharge. The remainder (1 - f_to_discharge) infiltrates to
@@ -71,16 +381,53 @@ class Reservoir(object):
         H0 : float, optional
             Initial water depth at the start of the simulation. Default 0.
         f_tile : float, optional
-            Fraction of subsurface drainage (H_infiltrated) that is diverted
+            Fraction of subsurface drainage (H_to_next) that is diverted
             to a fast tile-drain sub-reservoir instead of passing to the
             next-deeper reservoir.  The tile sub-reservoir drains directly to
-            stream with e-folding time tau_tile.  Represents agricultural
-            tile drainage or any fast lateral subsurface path.  Default 0
-            (no tile drainage).  Requires tau_tile when > 0.
+            stream with e-folding time tau_tile.  This is a *fractional-bypass*
+            tile representation: a constant fraction of recession outflow is
+            routed through a downstream fast linear reservoir, regardless of
+            current storage. Default 0 (no tile drainage).  Requires tau_tile
+            when > 0.
+
+            For a *threshold-activated parallel drainage* representation,
+            in which a second outflow path from the same storage activates
+            only above a water-table depth, use ``multipath_threshold`` /
+            ``multipath_timescale`` instead.
         tau_tile : float or None, optional
-            E-folding residence time [days] of the tile-drain sub-reservoir.
-            Typical values: 3–21 days for agricultural tile systems.  Required
-            when f_tile > 0; ignored when f_tile == 0.  Default None.
+            E-folding residence time [days] of the tile-drain sub-reservoir
+            (used with ``f_tile``).  Typical values: 3–21 days for
+            agricultural tile systems.  Required when f_tile > 0; ignored
+            when f_tile == 0.  Default None.
+        multipath_threshold : float or None, optional
+            Storage depth [mm] above which a *parallel* fast drainage path
+            from this reservoir activates.  The parallel path drains directly
+            to stream with e-folding timescale ``multipath_timescale`` and is
+            added to the discharge alongside the primary recession.  The
+            outflow is
+
+                Q_multipath = max(0, H - multipath_threshold) / multipath_timescale.
+
+            Below the threshold this term is exactly zero, so the reservoir
+            behaves identically to the no-multipath case.  Above it, a second
+            linear drain operates in parallel with the primary recession,
+            giving a two-timescale response: slow matrix drainage at low
+            storage and faster combined drainage at high storage.
+
+            Physical analogue: a tile-drain system installed at a fixed depth
+            that activates only once the water table rises above the drain
+            elevation.  Contrast with ``f_tile``/``tau_tile``, which is a
+            constant-fraction fast-routing path through a separate downstream
+            reservoir regardless of storage.
+
+            Both ``multipath_threshold`` and ``multipath_timescale`` must be
+            provided together, or both left as None (default = multipath
+            disabled).
+        multipath_timescale : float or None, optional
+            E-folding timescale [days] of the parallel multipath drain.
+            Typical values: 3–21 days for agricultural tile systems
+            represented this way. Required together with
+            ``multipath_threshold``; ignored when it is None.  Default None.
         junction_type : str, optional
             How drainage is partitioned between river discharge and the
             next-deeper reservoir.  Options:
@@ -114,15 +461,17 @@ class Reservoir(object):
         Raises
         ------
         ValueError
-            If t_recession <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
+            If recession_coeff <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
             pdm_H0 <= 0, f_tile < 0 or > 1, f_tile > 0 with no tau_tile,
-            junction_type is unrecognised, or junction_type is 'leakance'
-            with no leakance_R.
+            junction_type is unrecognised, junction_type is 'leakance'
+            with no leakance_R, multipath_threshold < 0,
+            multipath_timescale <= 0, or only one of the two multipath
+            parameters is provided.
         """
         self.Hwater = H0
         self.Hmax = Hmax
         self.pdm_H0 = pdm_H0
-        self.t_recession = t_recession
+        self.recession_coeff = recession_coeff
         self.f_to_discharge = f_to_discharge
         self.junction_type = junction_type
         self.leakance_R    = leakance_R
@@ -133,12 +482,12 @@ class Reservoir(object):
         self.H_excess = 0.
         self.H_deficit = 0.
         self.H_exfiltrated = 0.
-        self.H_infiltrated = 0.
+        self.H_to_next = 0.
         self.H_discharge = 0.
 
         # Check values and note whether they are reasonable
-        if t_recession <= 0:
-            raise ValueError("t_recession must be > 0.")
+        if recession_coeff <= 0:
+            raise ValueError("recession_coeff must be > 0.")
         if f_to_discharge < 0:
             raise ValueError("Negative f_to_discharge not possible.")
         elif f_to_discharge > 1:
@@ -167,11 +516,32 @@ class Reservoir(object):
         else:
             self.tile_res = None
 
+        # Multipath: threshold-activated parallel drain (distinct from the
+        # constant-fraction f_tile/tau_tile bypass; see __init__ docstring).
+        # Both must be set together or both None.
+        if (multipath_threshold is None) ^ (multipath_timescale is None):
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must be set "
+                "together (both numbers) or both left as None.")
+        if multipath_threshold is not None:
+            if multipath_threshold < 0.0:
+                raise ValueError("multipath_threshold must be >= 0.")
+            if multipath_timescale <= 0.0:
+                raise ValueError("multipath_timescale must be > 0.")
+        self.multipath_threshold = multipath_threshold
+        self.multipath_timescale = multipath_timescale
+
         # Power-law recession: Q = (H/τ) * (H/recession_H_ref)^(recession_exponent-1).
         # recession_exponent=1 (default) recovers the linear reservoir exactly.
         # recession_H_ref is the storage at which τ has its usual linear meaning [mm].
         self.recession_exponent = 1.0
         self.recession_H_ref    = 1.0
+
+    @property
+    def has_multipath(self):
+        """True when both multipath parameters are configured (drain active)."""
+        return (self.multipath_threshold is not None
+                and self.multipath_timescale is not None)
 
     def recharge(self, H):
         """
@@ -231,13 +601,13 @@ class Reservoir(object):
 
         Computes water lost by the recession law, partitions it between
         river discharge (H_exfiltrated) and infiltration to the next-deeper
-        reservoir (H_infiltrated) according to junction_type, and adds
+        reservoir (H_to_next) according to junction_type, and adds
         overflow from recharge() (H_excess) to H_discharge.
 
         Parameters
         ----------
         dt : float
-            Time step duration (same units as t_recession; typically days).
+            Time step duration (same units as recession_coeff; typically days).
         H_next : float or None, optional
             Current water depth of the next-deeper reservoir [mm].  Used
             only when junction_type is ``'leakance'`` to compute the
@@ -251,13 +621,13 @@ class Reservoir(object):
         H_eff = max(0.0, H0 - self.H_threshold) if self.junction_type == 'threshold' else H0
 
         if b == 1.0 or H_eff <= 0.0:
-            dH = H_eff * (1 - np.exp(-dt / self.t_recession))
+            dH = H_eff * (1 - np.exp(-dt / self.recession_coeff))
         else:
-            # Exact integration of dH/dt = -(H/t_recession)·(H/H_ref)^(b-1)
-            #   = -H^b / (t_recession · H_ref^(b-1))
+            # Exact integration of dH/dt = -(H/recession_coeff)·(H/H_ref)^(b-1)
+            #   = -H^b / (recession_coeff · H_ref^(b-1))
             # Substituting u = H^(1-b):  du/dt = (b-1)/tau_eff
             # => H(t+dt) = [H0^(1-b) + (b-1)·dt/tau_eff]^(1/(1-b))
-            tau_eff = self.t_recession * self.recession_H_ref ** (b - 1.0)
+            tau_eff = self.recession_coeff * self.recession_H_ref ** (b - 1.0)
             H_new   = (H_eff ** (1.0 - b) + (b - 1.0) * dt / tau_eff) ** (1.0 / (1.0 - b))
             dH      = H_eff - max(0.0, H_new)
 
@@ -265,25 +635,37 @@ class Reservoir(object):
         if self.junction_type == 'leakance' and H_next is not None:
             # Head-difference driven flux through confining unit (e.g., shale layer).
             # Q_leak = max(H_this - H_next, 0) / R, capped at available drainage dH.
-            Q_leak             = min(dH, max(0.0, H0 - H_next) / self.leakance_R)
-            self.H_infiltrated = Q_leak
+            Q_leak          = min(dH, max(0.0, H0 - H_next) / self.leakance_R)
+            self.H_to_next  = Q_leak
             self.H_exfiltrated = dH - Q_leak
         else:
             # 'fraction' and 'threshold': fixed f_to_discharge split.
             self.H_exfiltrated = dH * self.f_to_discharge
-            self.H_infiltrated = dH * (1 - self.f_to_discharge)
+            self.H_to_next     = dH * (1 - self.f_to_discharge)
 
         self.H_discharge = self.H_excess + self.H_exfiltrated
         self.Hwater -= dH
 
-        # Tile drainage: divert f_tile of H_infiltrated to the fast sub-reservoir.
+        # Tile drainage: divert f_tile of H_to_next to the fast sub-reservoir.
         # The remainder continues to the next-deeper reservoir as normal.
         if self.tile_res is not None:
-            tile_in = self.f_tile * self.H_infiltrated
-            self.H_infiltrated -= tile_in
+            tile_in = self.f_tile * self.H_to_next
+            self.H_to_next -= tile_in
             self.tile_res.recharge(tile_in)
             self.tile_res.discharge(dt)
             self.H_discharge += self.tile_res.H_discharge
+
+        # Multipath drainage: a parallel fast path direct to stream, active
+        # only when storage exceeds multipath_threshold. Applied after the
+        # primary recession via operator splitting (first-order accurate in dt;
+        # acceptable for daily timesteps with τ_matrix >> dt). Bypasses the
+        # junction/f_to_discharge partition — goes straight to discharge.
+        if self.has_multipath:
+            H_above = self.Hwater - self.multipath_threshold
+            if H_above > 0.0:
+                dH_mp = H_above * (1.0 - np.exp(-dt / self.multipath_timescale))
+                self.Hwater     -= dH_mp
+                self.H_discharge += dH_mp
 
     def mean_residence_time(self, Q_ref):
         """
@@ -304,9 +686,9 @@ class Reservoir(object):
         whenever :math:`Q_{\\mathrm{ref}} > 1` mm/day, reflecting the
         faster drainage at realistic operating storage depths.
 
-        Unlike :attr:`t_recession`, which is the recession time scale only at the
-        1 mm reference storage, MRT is a physically comparable timescale
-        across reservoirs with different recession exponents.
+        Unlike :attr:`recession_coeff`, which equals a timescale only when b=1
+        (linear reservoir), MRT is a physically comparable timescale across
+        reservoirs with different recession exponents.
 
         Parameters
         ----------
@@ -329,8 +711,8 @@ class Reservoir(object):
             raise ValueError("Q_ref must be > 0.")
         b = self.recession_exponent
         if b == 1.0:
-            return self.t_recession
-        return self.t_recession ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+            return self.recession_coeff
+        return self.recession_coeff ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
 
 
 class Snowpack(object):
@@ -673,9 +1055,13 @@ class Buckets(object):
                                                     [None]  * self.n_reservoirs)
         _H_threshold      = self.cfg['reservoirs'].get('H_threshold__mm',
                                                     [0.0]   * self.n_reservoirs)
+        _mp_threshold     = self.cfg['reservoirs'].get('multipath_thresholds__mm',
+                                                    [None]  * self.n_reservoirs)
+        _mp_timescale     = self.cfg['reservoirs'].get('multipath_timescales__days',
+                                                    [None]  * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
-                t_recession    = self.cfg['reservoirs']['recession_timescales__days'][i],
+                recession_coeff = self.cfg['reservoirs']['recession_timescales__days'][i],
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
                 Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
                 pdm_H0         = _pdm_H0[i],
@@ -685,6 +1071,8 @@ class Buckets(object):
                 junction_type  = _junction_types[i],
                 leakance_R     = _leakance_R[i],
                 H_threshold    = _H_threshold[i] if _H_threshold[i] is not None else 0.0,
+                multipath_threshold = _mp_threshold[i],
+                multipath_timescale = _mp_timescale[i],
             )
             for i in range(self.n_reservoirs)]
         for i, b_exp in enumerate(_recession_exp):
@@ -824,6 +1212,7 @@ class Buckets(object):
         self.hydrodata['Specific Discharge (modeled) [mm/day]'] = pd.NA
         self.hydrodata['Snowpack (modeled) [mm SWE]'] = pd.NA
         self.hydrodata['Subsurface storage (modeled total) [mm]'] = pd.NA
+        self._store_depths = False
 
         # Start out at first timestep
         # Could modify this to pick up a run in the middle
@@ -1303,7 +1692,7 @@ class Buckets(object):
                 # to this model not being physical or distributed, so just
                 # needing to balance mass.
                 self.reservoirs[i].recharge(
-                    self.reservoirs[i-1].H_infiltrated
+                    self.reservoirs[i-1].H_to_next
                     + self.reservoirs[i-1].H_deficit)
             H_next = (self.reservoirs[i + 1].Hwater
                       if i + 1 < len(self.reservoirs) else None)
@@ -1324,6 +1713,10 @@ class Buckets(object):
             np.sum([res.Hwater for res in self.reservoirs])
             + np.sum([res.tile_res.Hwater for res in self.reservoirs
                       if res.tile_res is not None]))
+        if self._store_depths:
+            for _i, _res in enumerate(self.reservoirs):
+                self.hydrodata.at[time_step,
+                                  f'H_reservoir_{_i} (modeled) [mm]'] = _res.Hwater
 
     def evapotranspiration_Chang2019(self, Tmax=None, Tmin=None, photoperiod=None,
                                     k=0.69):
@@ -1371,7 +1764,7 @@ class Buckets(object):
                                     0.)))
         return ET0
 
-    def run(self, start=None, end=None):
+    def run(self, start=None, end=None, store_depths=False):
         """
         Advance the model through time steps in self.hydrodata.
 
@@ -1407,7 +1800,101 @@ class Buckets(object):
                 date_mask &= self.hydrodata['Date'] >= pd.Timestamp(start)
             if end is not None:
                 date_mask &= self.hydrodata['Date'] <= pd.Timestamp(end)
-            for i in self.hydrodata.index[date_mask]:
+            _run_idx = self.hydrodata.index[date_mask]
+        else:
+            _run_idx = None
+
+        self._store_depths = store_depths
+        if store_depths:
+            for _i in range(len(self.reservoirs)):
+                self.hydrodata[f'H_reservoir_{_i} (modeled) [mm]'] = pd.NA
+
+        # JIT path: available when numba is installed, no PDM,
+        # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
+        _can_jit = (
+            _numba_available
+            and all(r.pdm_H0 is None for r in self.reservoirs)
+            and not self.use_et_water_stress
+        )
+
+        if _can_jit:
+            _idx = _run_idx if _run_idx is not None else self.hydrodata.index
+            _hd  = self.hydrodata.loc[_idx]
+
+            _needs_T = self.has_snowpack or (
+                self.use_frozen_ground and not np.isinf(self.fdd_threshold))
+            _T    = (_hd['Mean Temperature [C]'].to_numpy(dtype=np.float64)
+                     if _needs_T
+                     else np.zeros(len(_idx), dtype=np.float64))
+            _Tmin = (_hd['Minimum Temperature [C]'].to_numpy(dtype=np.float64)
+                     if self._has_trange
+                     else np.full(len(_idx), np.nan))
+            _Tmax = (_hd['Maximum Temperature [C]'].to_numpy(dtype=np.float64)
+                     if self._has_trange
+                     else np.full(len(_idx), np.nan))
+
+            _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
+            _Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow, _finalFgi, _finalDC = _jit_run(
+                _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
+                _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
+                _T, _Tmin, _Tmax,
+                np.array([r.Hwater          for r in self.reservoirs], dtype=np.float64),
+                self.snowpack.Hwater if self.has_snowpack else 0.0,
+                self._fgi,
+                self.H_deficit_carry,
+                np.array([r.recession_coeff      for r in self.reservoirs], dtype=np.float64),
+                np.array([r.recession_exponent  for r in self.reservoirs], dtype=np.float64),
+                np.array([r.recession_H_ref     for r in self.reservoirs], dtype=np.float64),
+                np.array([r.f_to_discharge      for r in self.reservoirs], dtype=np.float64),
+                np.array([_jmap[r.junction_type] for r in self.reservoirs], dtype=np.int64),
+                np.array([r.leakance_R if r.leakance_R is not None else np.inf
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.H_threshold          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.Hmax                 for r in self.reservoirs], dtype=np.float64),
+                np.array([r.f_tile               for r in self.reservoirs], dtype=np.float64),
+                np.array([r.tile_res.recession_coeff if r.tile_res is not None else 1.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.tile_res.Hwater if r.tile_res is not None else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.multipath_threshold if r.has_multipath else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
+                np.array([r.multipath_timescale if r.has_multipath else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
+                self.melt_factor if self.has_snowpack else 1.0,
+                self.snow_insulation_k,
+                self.fgi_decay_coeff,
+                self.fdd_threshold,
+                self.direct_runoff_fraction,
+                self.wp_soil,
+                self.wp_soil_sigma,
+                self.et_alpha,
+                self.dt,
+                self.has_snowpack,
+                self.use_frozen_ground,
+                self.use_rain_on_snow,
+                self.use_et_reservoir_draw,
+                self.use_direct_runoff,
+                self._has_trange,
+            )
+            self.hydrodata.loc[_idx, 'Specific Discharge (modeled) [mm/day]'] = _Q
+            if self.has_snowpack:
+                self.hydrodata.loc[_idx, 'Snowpack (modeled) [mm SWE]'] = _SWE
+            self.hydrodata.loc[_idx, 'Subsurface storage (modeled total) [mm]'] = _Hsub
+            if store_depths:
+                for _i in range(len(self.reservoirs)):
+                    self.hydrodata.loc[_idx, f'H_reservoir_{_i} (modeled) [mm]'] = _Hres_out[:, _i]
+            for _i, _h in enumerate(_finalH):
+                self.reservoirs[_i].Hwater = float(_h)
+            for _i, _r in enumerate(self.reservoirs):
+                if _r.tile_res is not None:
+                    _r.tile_res.Hwater = float(_finalHTile[_i])
+            if self.has_snowpack:
+                self.snowpack.Hwater = float(_finalSnow)
+            self._fgi            = float(_finalFgi)
+            self.H_deficit_carry = float(_finalDC)
+
+        elif _run_idx is not None:
+            for i in _run_idx:
                 self.update(time_step=i)
         else:
             for _ in self.hydrodata.index:

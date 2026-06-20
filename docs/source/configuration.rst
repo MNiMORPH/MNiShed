@@ -235,6 +235,21 @@ All lists must have the same length.
      - E-folding residence time (days) of the tile-drain sub-reservoir per
        main reservoir. Required when the corresponding ``tile_fractions``
        entry is greater than zero; ignored otherwise. Default: all ``null``.
+   * - ``multipath_thresholds__mm``
+     - list of floats or ``null``
+     - Storage depth (mm) above which a *parallel* fast drainage path
+       activates for each reservoir. ``null`` disables multipath for that
+       reservoir. When set, adds
+       :math:`Q_\text{mp} = \max(0, H - H_\text{thr})/\tau_\text{mp}` to
+       discharge alongside the primary recession. Requires the matching
+       ``multipath_timescales__days`` entry. Distinct from the
+       ``tile_fractions``/``tile_residence_times__days`` mechanism (see
+       below). Default: all ``null`` (multipath off).
+   * - ``multipath_timescales__days``
+     - list of floats or ``null``
+     - E-folding timescale (days) of the parallel multipath drain.
+       Required when the corresponding ``multipath_thresholds__mm`` entry
+       is set; ignored otherwise. Default: all ``null``.
    * - ``recession_exponents``
      - list of floats
      - Power-law recession exponent :math:`b` per reservoir. :math:`b = 1`
