@@ -52,9 +52,9 @@ def get(name):
 try:
     result = run_and_score(
         'cannon_cfg_template.yml',
-        t_efold               = [10 ** get('log__t_efold_shallow'),
-                                  10 ** get('log__t_efold_soil'),
-                                  10 ** get('log__t_efold_karst')],
+        recession_coeff       = [10 ** get('log__t_recession_shallow'),
+                                  10 ** get('log__t_recession_soil'),
+                                  10 ** get('log__t_recession_karst')],
         f_to_discharge        = [get('f_exfiltration_shallow'),
                                   get('f_exfiltration_soil')],
         melt_factor           =  get('PDD_melt_factor'),

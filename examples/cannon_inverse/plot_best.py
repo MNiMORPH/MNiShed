@@ -82,9 +82,9 @@ def read_best_params(dat_file):
 def run_model(row):
     return run_and_score(
         CFG_TEMPLATE,
-        t_efold               = [10 ** _get(row, 'log__t_efold_shallow'),
-                                  10 ** _get(row, 'log__t_efold_soil'),
-                                  10 ** _get(row, 'log__t_efold_karst')],
+        recession_coeff       = [10 ** _get(row, 'log__t_recession_shallow'),
+                                  10 ** _get(row, 'log__t_recession_soil'),
+                                  10 ** _get(row, 'log__t_recession_karst')],
         f_to_discharge        = [_get(row, 'f_exfiltration_shallow'),
                                   _get(row, 'f_exfiltration_soil')],
         melt_factor           =  _get(row, 'PDD_melt_factor'),
@@ -145,9 +145,9 @@ def make_plot(result, params, save_path, metric=METRIC):
     plt.setp(ax_q.get_xticklabels(), rotation=30, ha='right')
 
     # Annotation box
-    t_shallow  = 10 ** _get(params, 'log__t_efold_shallow')
-    t_soil     = 10 ** _get(params, 'log__t_efold_soil')
-    t_karst    = 10 ** _get(params, 'log__t_efold_karst')
+    t_shallow  = 10 ** _get(params, 'log__t_recession_shallow')
+    t_soil     = 10 ** _get(params, 'log__t_recession_soil')
+    t_karst    = 10 ** _get(params, 'log__t_recession_karst')
     routing_K  = 10 ** _get(params, 'log__routing_K')
 
     score_str = f'logKGE = {log_kge:.3f}   NSE = {nse:.3f}   KGE = {kge:.3f}   KGE$_{{logFDC}}$ = {kge_logfdc:.3f}   AIC = {aic:.1f}'
@@ -207,9 +207,9 @@ if __name__ == '__main__':
 
     print(f'\nBest evaluation: {int(best["eval_id"])}')
     print(f'  metric           = {METRIC}')
-    print(f'  t_efold_shallow  = {10 ** _get(best, "log__t_efold_shallow"):.1f} days')
-    print(f'  t_efold_soil     = {10 ** _get(best, "log__t_efold_soil"):.0f} days')
-    print(f'  t_efold_karst    = {10 ** _get(best, "log__t_efold_karst"):.0f} days')
+    print(f'  t_recession_shallow = {10 ** _get(best, "log__t_recession_shallow"):.1f} days')
+    print(f'  t_recession_soil    = {10 ** _get(best, "log__t_recession_soil"):.0f} days')
+    print(f'  t_recession_karst   = {10 ** _get(best, "log__t_recession_karst"):.0f} days')
     print(f'  f_exfilt_shallow = {_get(best, "f_exfiltration_shallow"):.4f}')
     print(f'  f_exfilt_soil    = {_get(best, "f_exfiltration_soil"):.4f}')
     if _is_active('PDD_melt_factor'):
