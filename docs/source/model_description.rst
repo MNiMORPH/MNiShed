@@ -556,13 +556,57 @@ AIC comparison (see :doc:`calibration`).
 
 **Frozen-ground and fast-drainage modules:**
   Use at most one of: frozen ground (``frozen_ground: true``), tile drains
-  (``tile_fractions > 0``), direct runoff (``direct_runoff: true``), PDM
-  (``pdm_H0__mm``), or a high calibrated :math:`b_{\text{soil}}`.  All five
-  mechanisms generate the same behavioral signature (fast spring or
-  event-driven pulse) and are equifinal when calibrated simultaneously from
-  streamflow alone.  The simplest first choice is to calibrate
-  :math:`b_{\text{soil}}` and leave the others inactive; activate one of
-  the explicit modules only if independent process evidence supports it.
+  (``tile_fractions > 0`` or ``multipath_thresholds__mm`` set),
+  direct runoff (``direct_runoff: true``), PDM (``pdm_H0__mm``), or a high
+  calibrated :math:`b_{\text{soil}}`.  All these mechanisms generate the
+  same behavioral signature (fast spring or event-driven pulse) and are
+  equifinal when calibrated simultaneously from streamflow alone.  The
+  simplest first choice is to calibrate :math:`b_{\text{soil}}` and leave
+  the others inactive; activate one of the explicit modules only if
+  independent process evidence supports it.
+
+**Two tile-drain representations:**
+  MNiShed supports two distinct mechanisms for representing agricultural
+  tile drainage. They model different physics; both have legitimate uses,
+  but they are not interchangeable and should not be combined for the same
+  process without good reason.
+
+  *Fractional-bypass tile* (``tile_fractions`` + ``tile_residence_times__days``,
+  i.e. ``f_tile`` / ``tau_tile``):
+    A constant fraction of the parent reservoir's recession outflow is
+    diverted into a separate downstream linear sub-reservoir, which then
+    drains directly to stream with timescale :math:`\tau_\text{tile}`.
+    Mathematically:
+    :math:`Q_\text{tile} = f_\text{tile} \cdot Q_\text{next}` (routed
+    through a downstream tile reservoir). The split is *storage-state
+    independent*: the same fraction applies whether the parent reservoir
+    is empty or full. Conceptually represents distributed fast pathways
+    (macropores, perched lenses, partly-drained tile networks) that
+    intercept a roughly constant share of percolating water.
+
+  *Multipath threshold-activated drain* (``multipath_thresholds__mm`` +
+  ``multipath_timescales__days``):
+    A second outflow path operates directly from the parent reservoir's
+    storage, active only when storage exceeds a threshold:
+    :math:`Q_\text{mp} = \max(0, H - H_\text{thr})/\tau_\text{mp}`,
+    added in parallel to the primary recession. The drain is
+    *storage-state dependent*: it contributes nothing below the threshold
+    and an additional linear drainage above it. Conceptually represents a
+    tile-drain network at a fixed installation depth that activates only
+    when the water table rises above drain elevation. The resulting
+    hydrograph response has two distinct timescales (slow matrix
+    recession below threshold; combined faster recession above), which
+    is consistent with a Brutsaert–Nieber recession exponent slightly
+    above 1 with modest scatter — the signature of two parallel linear
+    drainage regimes.
+
+  Choose ``f_tile`` / ``tau_tile`` when you expect the fast pathway
+  to be active across the full range of storage states (always-on
+  bypass). Choose ``multipath_*`` when there is a physical activation
+  depth and the fast response should only fire in wet conditions. The
+  two mechanisms can in principle be combined on the same reservoir but
+  the resulting identifiability problem is severe; default to using one
+  at a time.
 
 Evapotranspiration
 ~~~~~~~~~~~~~~~~~~
