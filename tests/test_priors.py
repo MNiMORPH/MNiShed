@@ -73,14 +73,14 @@ def test_recession_exponents_n3():
 
 
 def test_list_lengths_match_n_reservoirs():
-    """t_recession, recession_exponents, and initial_depths all have length n_reservoirs."""
+    """recession_coeff, recession_exponents, and initial_depths all have length n_reservoirs."""
     Q = _recession_Q()
     for n in (1, 2, 3):
         with warnings.catch_warnings():
             warnings.simplefilter("ignore")
             pr = suggest_priors(Q, n_reservoirs=n)
         assert len(pr.recession_exponents) == n
-        assert len(pr.t_recession) == n
+        assert len(pr.recession_coeff) == n
         assert len(pr.initial_depths) == n
 
 
@@ -148,15 +148,15 @@ def test_to_yaml_snippet_line_count_matches_n_reservoirs():
 
 
 # ---------------------------------------------------------------------------
-# log_t_recession_bounds structure
+# log_recession_coeff_bounds structure
 # ---------------------------------------------------------------------------
 
-def test_log_t_recession_bounds_structure():
+def test_log_recession_coeff_bounds_structure():
     """Non-None bounds satisfy lower < initial < upper."""
     Q = _recession_Q()
     with warnings.catch_warnings():
         warnings.simplefilter("ignore")
         pr = suggest_priors(Q, n_reservoirs=2)
-    for val in pr.log_t_recession_bounds.values():
+    for val in pr.log_recession_coeff_bounds.values():
         if val is not None:
             assert val['lower'] < val['initial'] < val['upper']
