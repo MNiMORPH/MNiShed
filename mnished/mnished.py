@@ -326,7 +326,8 @@ class Reservoir(object):
 
     def __init__(self, recession_coeff, f_to_discharge=1., Hmax=np.inf, pdm_H0=None,
                  H0=0., f_tile=0.0, tau_tile=None,
-                 junction_type='fraction', leakance_R=None, H_threshold=0.0):
+                 junction_type='fraction', leakance_R=None, H_threshold=0.0,
+                 multipath_threshold=None, multipath_timescale=None):
         """
         Initialize a reservoir.
 
@@ -360,13 +361,50 @@ class Reservoir(object):
             Fraction of subsurface drainage (H_to_next) that is diverted
             to a fast tile-drain sub-reservoir instead of passing to the
             next-deeper reservoir.  The tile sub-reservoir drains directly to
-            stream with e-folding time tau_tile.  Represents agricultural
-            tile drainage or any fast lateral subsurface path.  Default 0
-            (no tile drainage).  Requires tau_tile when > 0.
+            stream with e-folding time tau_tile.  This is a *fractional-bypass*
+            tile representation: a constant fraction of recession outflow is
+            routed through a downstream fast linear reservoir, regardless of
+            current storage. Default 0 (no tile drainage).  Requires tau_tile
+            when > 0.
+
+            For a *threshold-activated parallel drainage* representation,
+            in which a second outflow path from the same storage activates
+            only above a water-table depth, use ``multipath_threshold`` /
+            ``multipath_timescale`` instead.
         tau_tile : float or None, optional
-            E-folding residence time [days] of the tile-drain sub-reservoir.
-            Typical values: 3–21 days for agricultural tile systems.  Required
-            when f_tile > 0; ignored when f_tile == 0.  Default None.
+            E-folding residence time [days] of the tile-drain sub-reservoir
+            (used with ``f_tile``).  Typical values: 3–21 days for
+            agricultural tile systems.  Required when f_tile > 0; ignored
+            when f_tile == 0.  Default None.
+        multipath_threshold : float or None, optional
+            Storage depth [mm] above which a *parallel* fast drainage path
+            from this reservoir activates.  The parallel path drains directly
+            to stream with e-folding timescale ``multipath_timescale`` and is
+            added to the discharge alongside the primary recession.  The
+            outflow is
+
+                Q_multipath = max(0, H - multipath_threshold) / multipath_timescale.
+
+            Below the threshold this term is exactly zero, so the reservoir
+            behaves identically to the no-multipath case.  Above it, a second
+            linear drain operates in parallel with the primary recession,
+            giving a two-timescale response: slow matrix drainage at low
+            storage and faster combined drainage at high storage.
+
+            Physical analogue: a tile-drain system installed at a fixed depth
+            that activates only once the water table rises above the drain
+            elevation.  Contrast with ``f_tile``/``tau_tile``, which is a
+            constant-fraction fast-routing path through a separate downstream
+            reservoir regardless of storage.
+
+            Both ``multipath_threshold`` and ``multipath_timescale`` must be
+            provided together, or both left as None (default = multipath
+            disabled).
+        multipath_timescale : float or None, optional
+            E-folding timescale [days] of the parallel multipath drain.
+            Typical values: 3–21 days for agricultural tile systems
+            represented this way. Required together with
+            ``multipath_threshold``; ignored when it is None.  Default None.
         junction_type : str, optional
             How drainage is partitioned between river discharge and the
             next-deeper reservoir.  Options:
@@ -402,8 +440,10 @@ class Reservoir(object):
         ValueError
             If recession_coeff <= 0, f_to_discharge < 0 or > 1, Hmax < 0,
             pdm_H0 <= 0, f_tile < 0 or > 1, f_tile > 0 with no tau_tile,
-            junction_type is unrecognised, or junction_type is 'leakance'
-            with no leakance_R.
+            junction_type is unrecognised, junction_type is 'leakance'
+            with no leakance_R, multipath_threshold < 0,
+            multipath_timescale <= 0, or only one of the two multipath
+            parameters is provided.
         """
         self.Hwater = H0
         self.Hmax = Hmax
@@ -453,11 +493,32 @@ class Reservoir(object):
         else:
             self.tile_res = None
 
+        # Multipath: threshold-activated parallel drain (distinct from the
+        # constant-fraction f_tile/tau_tile bypass; see __init__ docstring).
+        # Both must be set together or both None.
+        if (multipath_threshold is None) ^ (multipath_timescale is None):
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must be set "
+                "together (both numbers) or both left as None.")
+        if multipath_threshold is not None:
+            if multipath_threshold < 0.0:
+                raise ValueError("multipath_threshold must be >= 0.")
+            if multipath_timescale <= 0.0:
+                raise ValueError("multipath_timescale must be > 0.")
+        self.multipath_threshold = multipath_threshold
+        self.multipath_timescale = multipath_timescale
+
         # Power-law recession: Q = (H/τ) * (H/recession_H_ref)^(recession_exponent-1).
         # recession_exponent=1 (default) recovers the linear reservoir exactly.
         # recession_H_ref is the storage at which τ has its usual linear meaning [mm].
         self.recession_exponent = 1.0
         self.recession_H_ref    = 1.0
+
+    @property
+    def has_multipath(self):
+        """True when both multipath parameters are configured (drain active)."""
+        return (self.multipath_threshold is not None
+                and self.multipath_timescale is not None)
 
     def recharge(self, H):
         """
@@ -570,6 +631,18 @@ class Reservoir(object):
             self.tile_res.recharge(tile_in)
             self.tile_res.discharge(dt)
             self.H_discharge += self.tile_res.H_discharge
+
+        # Multipath drainage: a parallel fast path direct to stream, active
+        # only when storage exceeds multipath_threshold. Applied after the
+        # primary recession via operator splitting (first-order accurate in dt;
+        # acceptable for daily timesteps with τ_matrix >> dt). Bypasses the
+        # junction/f_to_discharge partition — goes straight to discharge.
+        if self.has_multipath:
+            H_above = self.Hwater - self.multipath_threshold
+            if H_above > 0.0:
+                dH_mp = H_above * (1.0 - np.exp(-dt / self.multipath_timescale))
+                self.Hwater     -= dH_mp
+                self.H_discharge += dH_mp
 
     def mean_residence_time(self, Q_ref):
         """
