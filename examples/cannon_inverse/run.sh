@@ -5,7 +5,7 @@
 #   bash run.sh <short-description>
 #   e.g.: bash run.sh kge_3res_nogamma
 #
-# Requires dakota and python (with hydroravens + dakota.interfacing) on PATH.
+# Requires dakota and python (with mnished + dakota.interfacing) on PATH.
 # If using a conda environment: conda activate <your-env> before running.
 
 set -euo pipefail

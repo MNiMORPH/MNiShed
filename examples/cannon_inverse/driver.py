@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Dakota driver for decade-by-decade hydroRaVENS calibration.
+Dakota driver for decade-by-decade MNiShed calibration.
 
 Run settings and active parameters are read from params.yml.
 Returns (1 - score) so Dakota minimisation is equivalent to metric maximisation.

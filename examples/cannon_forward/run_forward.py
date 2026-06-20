@@ -1,6 +1,6 @@
 #!/usr/bin/env python3
 """
-Forward run of hydroRaVENS for the Cannon River catchment.
+Forward run of MNiShed for the Cannon River catchment.
 
 Runs the model with the configuration in cannon_cfg.yml, prints
 goodness-of-fit metrics, and saves a diagnostic hydrograph plot.
@@ -53,7 +53,7 @@ ax_q.legend()
 ax_q.xaxis.set_major_formatter(mdates.DateFormatter('%Y-%m'))
 plt.setp(ax_q.get_xticklabels(), rotation=30, ha='right')
 
-fig.suptitle('hydroRaVENS – Cannon River forward run')
+fig.suptitle('MNiShed – Cannon River forward run')
 plt.savefig('forward_run.png', dpi=150, bbox_inches='tight')
 print('Plot saved to forward_run.png')
 plt.show()

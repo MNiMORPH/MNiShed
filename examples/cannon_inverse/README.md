@@ -1,6 +1,6 @@
 # Cannon River — parameter estimation (Dakota)
 
-Calibrates hydroRaVENS for the Cannon River catchment using efficient
+Calibrates MNiShed for the Cannon River catchment using efficient
 global optimisation (EGO) followed by pattern search, via the
 [Dakota](https://dakota.sandia.gov/) toolkit.
 
@@ -11,11 +11,11 @@ logKGE (low-flow timing), and KGE on log-FDC (flow-regime shape)
 
 ## Requirements
 
-- `hydroravens` installed (`pip install hydroravens`)
+- `mnished` installed (`pip install mnished`)
 - [Dakota](https://dakota.sandia.gov/) (tested with v6.x)
 - `pyyaml` (`pip install pyyaml`)
 
-If Dakota and hydroravens are in separate environments, activate the one
+If Dakota and mnished are in separate environments, activate the one
 that has both before running.
 
 ## Workflow

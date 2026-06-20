@@ -1,7 +1,7 @@
 #!/usr/bin/env python3
 """
 Find the best-fit parameters from a completed Dakota calibration run,
-re-run hydroRaVENS with those parameters, and produce a diagnostic plot.
+re-run MNiShed with those parameters, and produce a diagnostic plot.
 
 Figure layout
 -------------
@@ -187,7 +187,7 @@ def make_plot(result, params, save_path, metric=METRIC):
     ax_fdc.set_title('Flow duration curve', fontsize=10)
     ax_fdc.grid(True, which='both', alpha=0.3)
 
-    fig.suptitle('hydroRaVENS – Cannon River best-fit calibration', fontsize=13)
+    fig.suptitle('MNiShed – Cannon River best-fit calibration', fontsize=13)
 
     plt.savefig(save_path, dpi=150, bbox_inches='tight')
     print(f'Figure saved to {save_path}')

@@ -1,4 +1,4 @@
-# Cannon River catchment — hydroRaVENS calibration template
+# Cannon River catchment — MNiShed calibration template
 # Physical parameters are overridden by driver.py during calibration.
 # spin_up_cycles: 0 here; driver.py performs spin-up after setting parameters.
 

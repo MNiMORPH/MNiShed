@@ -1,4 +1,4 @@
-# hydroRaVENS Cannon River calibration configuration
+# MNiShed Cannon River calibration configuration
 # Edit this file to control active parameters, bounds, and run settings.
 # Run generate_dakota_in.py after any change to regenerate dakota.in.
 

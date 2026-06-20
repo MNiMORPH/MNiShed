@@ -1,6 +1,6 @@
 # Cannon River — forward run
 
-Runs hydroRaVENS for the Cannon River catchment (Minnesota, USA) with a
+Runs MNiShed for the Cannon River catchment (Minnesota, USA) with a
 fixed parameter set and prints goodness-of-fit diagnostics.
 
 **Catchment:** Cannon River near Red Wing, MN (USGS 05355200; 3800 km²)
@@ -8,7 +8,7 @@ fixed parameter set and prints goodness-of-fit diagnostics.
 
 ## Requirements
 
-- `hydroravens` installed (`pip install hydroravens`)
+- `mnished` installed (`pip install mnished`)
 
 ## Usage
 
