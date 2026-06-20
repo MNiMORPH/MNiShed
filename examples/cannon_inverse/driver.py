@@ -9,7 +9,7 @@ Returns (1 - score) so Dakota minimisation is equivalent to metric maximisation.
 import yaml
 import dakota.interfacing as di
 import numpy as np
-from hydroravens import run_and_score
+from mnished import run_and_score
 
 with open('params.yml') as f:
     _cfg = yaml.safe_load(f)

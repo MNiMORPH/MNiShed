@@ -12,7 +12,7 @@ Usage (from this directory):
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from hydroravens import run_and_score
+from mnished import run_and_score
 
 result = run_and_score(
     'cannon_cfg.yml',

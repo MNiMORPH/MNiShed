@@ -20,8 +20,8 @@ import pandas as pd
 import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
-from hydroravens import run_and_score
-from hydroravens.calibration import _nse, _kge, _log_kge, _kge_logfdc
+from mnished import run_and_score
+from mnished.calibration import _nse, _kge, _log_kge, _kge_logfdc
 
 CFG_TEMPLATE  = 'cannon_cfg_template.yml'
 OBJECTIVE_COL = 'neg_kge'
