@@ -172,6 +172,24 @@ These variables are updated by each call to
    * - ``subsurface_water__depth``
      - mm
      - Total subsurface storage (all reservoirs)
+   * - ``land_surface_water__evapotranspiration_volume_flux``
+     - mm d⁻¹
+     - Model evapotranspiration flux (after water-balance scaling)
+   * - ``land_surface_water__direct_runoff_volume_flux``
+     - mm d⁻¹
+     - Hortonian-style fast bypass (``direct_runoff`` module)
+   * - ``land_surface_water__baseflow_volume_flux``
+     - mm d⁻¹
+     - Constant regional baseflow (``baseflow_Q``); see note below
+   * - ``land_surface_water__tile_drain_volume_flux``
+     - mm d⁻¹
+     - Tile-drain sub-reservoir discharge (``tile_fractions``)
+   * - ``land_surface_water__multipath_drain_volume_flux``
+     - mm d⁻¹
+     - Threshold-activated parallel drain (``multipath_thresholds__mm``)
+   * - ``land_surface__frozen_ground_index``
+     - degC d
+     - Frozen-ground index (FGI) state
    * - ``subsurface_water_reservoir_0__depth``
      - mm
      - Reservoir 0 storage (shallowest)
@@ -179,6 +197,25 @@ These variables are updated by each call to
      - mm
      - Reservoirs 1–9 storage (deeper); ``nan`` for indices ≥ number of
        configured reservoirs
+
+.. note::
+
+   **Flux partition.** The four ``*_volume_flux`` components above
+   (direct runoff, baseflow, tile drain, multipath drain) decompose the
+   fast-flow contributions to discharge and are recorded by each
+   :meth:`~mnished.BmiMNiShed.update`.  They are diagnostic: the
+   primary cascade discharge is reported by
+   ``land_surface_water__runoff_volume_flux``.  ``baseflow`` is the
+   constant regional-import term (``baseflow_Q``); like ``run_and_score``,
+   it is applied as an output-layer addition and is **not** part of the
+   routed cascade, so it is exposed separately and is *not* folded into
+   ``land_surface_water__runoff_volume_flux``.  A coupled model that wants
+   total discharge including regional import should add the two.
+
+   The CSDMS Standard Names for evapotranspiration, direct runoff, and
+   baseflow extend the registered ``land_surface_water__…_volume_flux``
+   family; ``tile_drain``, ``multipath_drain``, and ``frozen_ground_index``
+   are MNiShed-specific quantities named to follow the same convention.
 
 .. note::
 

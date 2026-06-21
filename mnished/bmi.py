@@ -45,6 +45,12 @@ _OUTPUT_VAR_NAMES = (
     "channel_exit_water__volume_flow_rate",
     "snowpack__liquid_equivalent_depth",
     "subsurface_water__depth",
+    "land_surface_water__evapotranspiration_volume_flux",
+    "land_surface_water__direct_runoff_volume_flux",
+    "land_surface_water__baseflow_volume_flux",
+    "land_surface_water__tile_drain_volume_flux",
+    "land_surface_water__multipath_drain_volume_flux",
+    "land_surface__frozen_ground_index",
     "subsurface_water_reservoir_0__depth",
     "subsurface_water_reservoir_1__depth",
     "subsurface_water_reservoir_2__depth",
@@ -74,6 +80,12 @@ _VAR_UNITS = {
     "channel_exit_water__volume_flow_rate":                  "m3 s-1",
     "snowpack__liquid_equivalent_depth":                     "mm",
     "subsurface_water__depth":                               "mm",
+    "land_surface_water__evapotranspiration_volume_flux":    "mm d-1",
+    "land_surface_water__direct_runoff_volume_flux":         "mm d-1",
+    "land_surface_water__baseflow_volume_flux":              "mm d-1",
+    "land_surface_water__tile_drain_volume_flux":            "mm d-1",
+    "land_surface_water__multipath_drain_volume_flux":       "mm d-1",
+    "land_surface__frozen_ground_index":                     "degC d",
     "subsurface_water_reservoir_0__depth":                   "mm",
     "subsurface_water_reservoir_1__depth":                   "mm",
     "subsurface_water_reservoir_2__depth":                   "mm",
@@ -432,6 +444,34 @@ class BmiMNiShed(Bmi):
                 return np.nan
             val = m.hydrodata.at[idx, "Subsurface storage (modeled total) [mm]"]
             return float(val) if not pd.isna(val) else np.nan
+
+        if name == "land_surface_water__evapotranspiration_volume_flux":
+            # Model evapotranspiration flux after water-balance scaling
+            # (storage-stress reduction, where enabled, applies separately).
+            if idx < first:
+                return np.nan
+            val = m.hydrodata.at[idx, "ET for model [mm/day]"]
+            return float(val) if not pd.isna(val) else np.nan
+
+        # Flux-partition components of the total discharge, recorded by the
+        # most recent update().  baseflow is the constant regional-import term
+        # (mm/day); it is an output-layer addition and is not part of the
+        # routed cascade, so it is exposed here but not folded into the
+        # land_surface_water__runoff_volume_flux total.
+        if name == "land_surface_water__direct_runoff_volume_flux":
+            return np.nan if idx < first else float(m._flux_direct_runoff)
+
+        if name == "land_surface_water__baseflow_volume_flux":
+            return np.nan if idx < first else float(m.baseflow_Q)
+
+        if name == "land_surface_water__tile_drain_volume_flux":
+            return np.nan if idx < first else float(m._flux_tile)
+
+        if name == "land_surface_water__multipath_drain_volume_flux":
+            return np.nan if idx < first else float(m._flux_multipath)
+
+        if name == "land_surface__frozen_ground_index":
+            return float(m._fgi)
 
         for i, rname in enumerate(_RESERVOIR_DEPTH_NAMES):
             if name == rname:

@@ -328,3 +328,49 @@ def test_set_value_at_indices(bmi):
     bmi.set_value_at_indices(P_NAME, np.array([0]), np.array([7.5]))
     idx = bmi._model._timestep_i
     assert bmi._model.hydrodata.at[idx, "Precipitation [mm/day]"] == pytest.approx(7.5)
+
+
+# ---------------------------------------------------------------------------
+# Flux-partition and state outputs (v3)
+# ---------------------------------------------------------------------------
+
+NEW_OUTPUTS = (
+    "land_surface_water__evapotranspiration_volume_flux",
+    "land_surface_water__direct_runoff_volume_flux",
+    "land_surface_water__baseflow_volume_flux",
+    "land_surface_water__tile_drain_volume_flux",
+    "land_surface_water__multipath_drain_volume_flux",
+    "land_surface__frozen_ground_index",
+)
+
+
+def test_new_outputs_declared(bmi):
+    """The v3 flux-partition and state outputs are declared with units/type."""
+    out = bmi.get_output_var_names()
+    for name in NEW_OUTPUTS:
+        assert name in out
+        assert bmi.get_var_units(name)             # non-empty units string
+        assert bmi.get_var_type(name) == "float64"
+
+
+def test_new_outputs_readable(bmi):
+    """Each new output returns a finite scalar after stepping."""
+    bmi.update_until(40.0)
+    dest = np.empty(1, dtype=np.float64)
+    for name in NEW_OUTPUTS:
+        bmi.get_value(name, dest)
+        assert np.isfinite(dest[0])
+
+
+def test_baseflow_output_reflects_config(monkeypatch):
+    """The baseflow output equals the configured baseflow_Q (regional import)."""
+    from mnished import BmiMNiShed
+    monkeypatch.chdir(EXAMPLE_DIR)
+    b = BmiMNiShed()
+    b.initialize(EXAMPLE_CONFIG)
+    b._model.baseflow_Q = 1.25                     # inject a regional-import value
+    b.update()
+    dest = np.empty(1, dtype=np.float64)
+    b.get_value("land_surface_water__baseflow_volume_flux", dest)
+    assert dest[0] == pytest.approx(1.25)
+    b.finalize()
