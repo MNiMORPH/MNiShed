@@ -311,7 +311,7 @@ class BrutsaertNieber:
             f"  Power-law R²         : {self.r2_:.3f}\n"
             f"  Quadratic R²         : {self.r2_quadratic_:.3f}"
             + (f"\n{curv_note}" if curv_note else "") +
-            f"\n  Reference (long-time Boussinesq): n = 1.5, b = 2.0"
+            "\n  Reference (long-time Boussinesq): n = 1.5, b = 2.0"
         )
 
     def plot(self, ax=None, show_fit=True, label=None, **scatter_kwargs):

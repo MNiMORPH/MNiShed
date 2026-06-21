@@ -134,7 +134,7 @@ class Priors:
         b_note = {
             labels[0]:  "B–N data-driven estimate — calibrate",
             labels[-2] if n > 1 else labels[0]:
-                        f"theoretical B–N 2.203 — consider fixing",
+                        "theoretical B–N 2.203 — consider fixing",
         }
         if n > 2:
             b_note[labels[-1]] = "linear (b=1) — deep reservoir default"

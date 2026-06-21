@@ -244,7 +244,7 @@ class HydrographSeparation:
         if self.aic_scores is not None:
             print(f'\n  AIC by fast-reservoir order: '
                   f'{[round(a, 1) for a in self.aic_scores]}')
-        print(f'\n  Time-domain estimates:')
+        print('\n  Time-domain estimates:')
         td_sh = (f'{self._tau_shallow_td:.1f} d'
                  if self._tau_shallow_td is not None else 'not estimated')
         print(f'    τ_shallow : {td_sh}')
