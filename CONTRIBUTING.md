@@ -1,8 +1,8 @@
-# Contributing to HydroRaVENS
+# Contributing to MNiShed
 
 ## Reporting bugs and requesting features
 
-Please open an issue on [GitHub](https://github.com/MNiMORPH/hydroRaVENS/issues).
+Please open an issue on [GitHub](https://github.com/MNiMORPH/MNiShed/issues).
 Include a minimal reproducible example and your Python and package versions where relevant.
 
 ## Contributing code
@@ -14,8 +14,8 @@ Include a minimal reproducible example and your Python and package versions wher
    ```
 3. Make your changes. Run the Cannon River example to confirm the model still produces a sensible result:
    ```
-   cd examples/cannon_river
-   python driver.py
+   cd examples/cannon_forward
+   python run_forward.py
    ```
 4. If you changed the documentation, build it locally to check for errors:
    ```
@@ -32,7 +32,7 @@ with the intentional exceptions listed below.
 
 You can check for unintentional style deviations with:
 ```
-pycodestyle --max-line-length=99 hydroravens/
+pycodestyle --max-line-length=99 mnished/
 ```
 
 Write [NumPy-style docstrings](https://numpydoc.readthedocs.io/en/latest/format.html)
