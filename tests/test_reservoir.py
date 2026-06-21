@@ -250,3 +250,31 @@ def test_threshold_water_balance():
     res.discharge(dt=1.0)
     assert H_before == pytest.approx(
         res.Hwater + res.H_exfiltrated + res.H_to_next, rel=1e-9)
+
+
+# --- Fast-path discharge components (recorded for the BMI flux partition) ---
+
+def test_tile_component_recorded():
+    """H_tile records the tile-drain contribution; H_multipath stays 0."""
+    res = Reservoir(recession_coeff=10.0, f_to_discharge=0.5,
+                    f_tile=0.4, tau_tile=3.0, H0=100.0)
+    res.discharge(dt=1.0)
+    assert res.H_tile > 0.0
+    assert res.H_multipath == 0.0
+
+
+def test_multipath_component_recorded():
+    """H_multipath records the multipath contribution; H_tile stays 0."""
+    res = Reservoir(recession_coeff=50.0, multipath_threshold=20.0,
+                    multipath_timescale=3.0, H0=100.0)
+    res.discharge(dt=1.0)
+    assert res.H_multipath > 0.0
+    assert res.H_tile == 0.0
+
+
+def test_no_fast_path_components_zero():
+    """With no tile or multipath, both component records are exactly 0."""
+    res = Reservoir(recession_coeff=10.0, f_to_discharge=1.0, H0=100.0)
+    res.discharge(dt=1.0)
+    assert res.H_tile == 0.0
+    assert res.H_multipath == 0.0

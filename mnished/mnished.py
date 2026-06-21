@@ -484,6 +484,10 @@ class Reservoir(object):
         self.H_exfiltrated = 0.
         self.H_to_next = 0.
         self.H_discharge = 0.
+        # Fast-path components of H_discharge, recorded per step for
+        # diagnostics / BMI flux partition (already included in H_discharge).
+        self.H_tile = 0.
+        self.H_multipath = 0.
 
         # Check values and note whether they are reasonable
         if recession_coeff <= 0:
@@ -646,6 +650,11 @@ class Reservoir(object):
         self.H_discharge = self.H_excess + self.H_exfiltrated
         self.Hwater -= dH
 
+        # Reset the per-step fast-path components (recorded for the BMI flux
+        # partition; they are also folded into H_discharge below).
+        self.H_tile = 0.0
+        self.H_multipath = 0.0
+
         # Tile drainage: divert f_tile of H_to_next to the fast sub-reservoir.
         # The remainder continues to the next-deeper reservoir as normal.
         if self.tile_res is not None:
@@ -653,7 +662,8 @@ class Reservoir(object):
             self.H_to_next -= tile_in
             self.tile_res.recharge(tile_in)
             self.tile_res.discharge(dt)
-            self.H_discharge += self.tile_res.H_discharge
+            self.H_tile = self.tile_res.H_discharge
+            self.H_discharge += self.H_tile
 
         # Multipath drainage: a parallel fast path direct to stream, active
         # only when storage exceeds multipath_threshold. Applied after the
@@ -665,6 +675,7 @@ class Reservoir(object):
             if H_above > 0.0:
                 dH_mp = H_above * (1.0 - np.exp(-dt / self.multipath_timescale))
                 self.Hwater     -= dH_mp
+                self.H_multipath = dH_mp
                 self.H_discharge += dH_mp
 
     def mean_residence_time(self, Q_ref):
@@ -1112,6 +1123,12 @@ class Buckets(object):
         self.water_year_start_month = self.cfg['catchment']['water_year_start_month']
         self.drainage_basin_area__km2 = self.cfg['catchment']['drainage_basin_area__km2']
         self.baseflow_Q = self.cfg['catchment'].get('baseflow_Q', 0.0)
+        # Per-step flux-partition components, populated by update() and read
+        # by the BMI wrapper (mm/day).  baseflow_Q itself is an output-layer
+        # term applied by run_and_score / the BMI, not by the cascade.
+        self._flux_direct_runoff = 0.0
+        self._flux_tile = 0.0
+        self._flux_multipath = 0.0
 
         # Module enable/disable flags — read from config, default to on
         # (except direct_runoff, which defaults to off).
@@ -1650,6 +1667,9 @@ class Buckets(object):
                 np.sum([res.Hwater for res in self.reservoirs])
                 + np.sum([res.tile_res.Hwater for res in self.reservoirs
                           if res.tile_res is not None]))
+            self._flux_direct_runoff = np.nan
+            self._flux_tile = np.nan
+            self._flux_multipath = np.nan
             return
 
         excess_dd = self._compute_snowpack(time_step) if self.has_snowpack else 0.0
@@ -1701,6 +1721,13 @@ class Buckets(object):
 
         self.reservoirs[0].f_to_discharge = f0
         self.H_deficit_carry = self.reservoirs[-1].H_deficit
+
+        # Record per-step flux-partition components (mm/day) for diagnostics
+        # and BMI coupling.  These are already reflected in the total
+        # specific discharge above; recording them changes no result.
+        self._flux_direct_runoff = _q_direct
+        self._flux_tile = sum(r.H_tile for r in self.reservoirs)
+        self._flux_multipath = sum(r.H_multipath for r in self.reservoirs)
 
         if self.use_et_reservoir_draw:
             self._draw_et_from_reservoirs(
