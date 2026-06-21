@@ -212,7 +212,28 @@ All lists must have the same length.
      - Drainage time constant (days) for each reservoir
    * - ``exfiltration_fractions``
      - list of floats
-     - Fraction (0–1) of drainage exiting as discharge
+     - Fraction (0–1) of drainage exiting as discharge. Used by the
+       ``fraction`` and ``threshold`` junction types; ignored for
+       ``leakance``.
+   * - ``junction_types``
+     - list of strings
+     - Routing rule at each reservoir's outlet to the next-deeper reservoir:
+       ``fraction`` (default), ``leakance``, or ``threshold``. See
+       :ref:`reservoir-junctions`. Default: all ``fraction`` (the
+       ``exfiltration_fractions`` split).
+   * - ``leakance_R__days``
+     - list of floats or ``null``
+     - Leakance resistance :math:`R` (days) for reservoirs whose
+       ``junction_types`` entry is ``leakance``. Downward flow is
+       :math:`\max(H_i - H_{i+1}, 0)/R`, capped at the total drainage;
+       larger :math:`R` impedes it. Required for a ``leakance`` junction;
+       ignored otherwise. Default: all ``null``.
+   * - ``H_threshold__mm``
+     - list of floats
+     - Dead-storage depth (mm) for reservoirs whose ``junction_types`` entry
+       is ``threshold``: only :math:`\max(H - H_\text{thr}, 0)` drains, so
+       storage below the threshold is retained indefinitely. Default: all
+       ``0.0`` (no threshold; full storage drains).
    * - ``maximum_effective_depths__mm``
      - list of floats
      - Storage capacity (mm) per reservoir; use ``.inf`` for unlimited

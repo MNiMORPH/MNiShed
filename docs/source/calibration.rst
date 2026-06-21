@@ -147,6 +147,15 @@ that is passed as a non-trivial argument (e.g. each element of ``recession_coeff
 ``f_to_discharge`` that is free).  Fixed structural choices (e.g. ``b_deep = 1``
 by convention, not optimization) do not add to :math:`k`.
 
+Some arguments are lists that may hold a mix of fixed and calibrated entries
+— the junction parameters (``leakance_R``, ``H_threshold``) and the
+``recession_exponents``.  For these, the free count cannot be inferred from
+the values alone, so it is given explicitly through a companion
+``*_calibrated`` argument.  Set ``leakance_R_calibrated``,
+``H_threshold_calibrated``, and ``recession_exponents_calibrated`` to the
+number of entries in the corresponding list that the optimizer is free to
+vary; only that many are added to :math:`k`.
+
 The ET scaling factor added by ``enforce_water_balance='water-year'`` is a
 hidden degree of freedom: one multiplier per water year is computed from the
 data, effectively adding :math:`N_{\text{years}}` free parameters.

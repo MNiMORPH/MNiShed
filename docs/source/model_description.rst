@@ -346,6 +346,71 @@ where:
   groundwater (years) — but that mapping is the user's choice, analogous
   to the multi-component runoff structure of HBV (Bergström 1976).
 
+.. _reservoir-junctions:
+
+Junctions Between Reservoirs (Optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The discharge partitioning above sends a fixed fraction :math:`f_i` of each
+reservoir's drainage to the stream and the remainder to the next-deeper
+reservoir. This fixed split is the default *junction* — the rule that sets
+how drained water is routed where one reservoir meets the one beneath it.
+Two further junction types let that routing depend on the physical state of
+the reservoirs rather than on a fixed fraction. The junction type is chosen
+per reservoir, and types may be mixed within a single cascade.
+
+**Fraction junction (default).**
+  The drained water :math:`Q_i` splits by the constant fraction :math:`f_i`:
+  :math:`f_i Q_i` to the stream and :math:`(1 - f_i)\,Q_i` to the next
+  reservoir, independent of storage. This is the standard linear-cascade
+  behaviour described above, and the default for every reservoir.
+
+**Leakance junction.**
+  Flow to the next-deeper reservoir is driven by the difference in water
+  level between the two reservoirs rather than by a fixed fraction — a
+  representation of Darcy flow through a confining unit (e.g. a clay or
+  shale layer) that separates two aquifers. With :math:`H_i` the water level
+  in this reservoir and :math:`H_{i+1}` that in the next, the downward flux
+  is
+
+  .. math::
+
+      Q_{\text{infiltrate},i} = \min\!\left( Q_i,\;
+          \frac{\max(H_i - H_{i+1},\, 0)}{R_i} \right) ,
+
+  where :math:`R_i` is the *leakance resistance* (days): a larger :math:`R_i`
+  more strongly impedes flow between the reservoirs. Water moves downward
+  only when :math:`H_i > H_{i+1}`, and the flux cannot exceed the drainage
+  :math:`Q_i` available in the time step. Whatever is not passed downward
+  exits to the stream,
+
+  .. math::
+
+      Q_{\text{discharge},i} = Q_i - Q_{\text{infiltrate},i} .
+
+  The exfiltration fraction :math:`f_i` is not used for a leakance junction.
+
+**Threshold junction.**
+  A dead-storage threshold :math:`H_{\text{thr},i}` below which the
+  reservoir does not drain. The recession law acts only on the storage above
+  the threshold,
+
+  .. math::
+
+      H_{\text{eff},i} = \max(H_i - H_{\text{thr},i},\, 0) ,
+
+  so water below :math:`H_{\text{thr},i}` is retained indefinitely. This
+  represents a stream–aquifer connection that switches off once the water
+  table drops below the streambed elevation: baseflow stops below a storage
+  threshold rather than decaying smoothly toward zero. Above the threshold,
+  the drainage splits by :math:`f_i` exactly as in the fraction junction.
+
+Use a non-default junction only where there is physical reason for it — a
+known confining layer between two aquifers, or an observed baseflow cutoff.
+The fraction junction remains the parsimonious default, and adding a
+leakance resistance or a dead-storage threshold introduces a parameter that
+the data must be able to constrain.
+
 Nonlinear (Power-Law) Recession (Optional)
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
