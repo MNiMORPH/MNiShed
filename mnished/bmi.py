@@ -179,8 +179,8 @@ class BmiMNiShed(Bmi):
     values.
 
     **Per-reservoir depths**: ``subsurface_water_reservoir_0__depth``
-    through ``subsurface_water_reservoir_2__depth`` correspond to
-    reservoirs 0, 1, 2 (shallowest to deepest) in the configuration.
+    through ``subsurface_water_reservoir_9__depth`` correspond to
+    reservoirs 0–9 (shallowest to deepest) in the configuration.
     Depths for reservoir indices that do not exist in the current
     configuration are returned as ``np.nan``.
 
