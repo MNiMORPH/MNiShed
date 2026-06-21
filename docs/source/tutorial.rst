@@ -86,8 +86,8 @@ The output looks like::
       deep    : 18.4 mm
 
     Calibration bounds (log10 days) for params.yml:
-      log__t_efold_soil:   initial=1.453,  lower=0.953,  upper=1.953
-      log__t_efold_karst:  initial=2.928,  lower=2.428,  upper=3.428
+      log__t_recession_soil:   initial=1.453,  lower=0.953,  upper=1.953
+      log__t_recession_karst:  initial=2.928,  lower=2.428,  upper=3.428
 
     Brutsaert–Nieber recession cloud:
       slope n   = 1.4817
@@ -213,7 +213,7 @@ correct, magnitudes are in the right range), proceed to calibration.
      - Likely cause and fix
    * - Modeled peak timing shifted by weeks
      - Melt factor too high or low; soil τ too short or long.
-       Adjust ``PDD_melt_factor`` and ``log__t_efold_soil``.
+       Adjust ``PDD_melt_factor`` and ``log__t_recession_soil``.
    * - Baseflow too high in summer
      - Intermediate or deep τ too short, or f_exfiltration too high for
        those layers.  Extend timescales; reduce exfiltration fractions.
@@ -232,19 +232,19 @@ Stage 4 — Calibrate
 MNiShed uses `Dakota <https://dakota.sandia.gov>`_ for calibration.
 The calibration workflow is driven by a ``params.yml`` file that
 specifies which parameters to calibrate and their bounds.  Use the
-bounds from ``pr.log_t_efold_bounds`` as the starting point for
-``log__t_efold_*`` parameters:
+bounds from ``pr.log_recession_coeff_bounds`` as the starting point for
+``log__t_recession_*`` parameters:
 
 .. code-block:: yaml
 
     parameters:
 
-      log__t_efold_soil:
-        lower:   0.953    # from pr.log_t_efold_bounds
+      log__t_recession_soil:
+        lower:   0.953    # from pr.log_recession_coeff_bounds
         upper:   1.953
         initial: 1.453
 
-      log__t_efold_karst:
+      log__t_recession_karst:
         lower:   2.428
         upper:   3.428
         initial: 2.928
@@ -271,7 +271,7 @@ After calibration, inspect the best-fit parameters and metrics:
 
     result = run_and_score(
         'config.yml',
-        t_efold           = [28.4, 847.3, 10000],
+        recession_coeff   = [28.4, 847.3, 10000],
         f_to_discharge    = [0.65, 0.48],
         recession_exponents = [3.4, 2.203, 1.0],
         enforce_water_balance = 'global',

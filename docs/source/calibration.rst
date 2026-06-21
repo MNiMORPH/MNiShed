@@ -143,7 +143,7 @@ to all flow magnitudes.
 **Counting free parameters (k):**
 Only parameters that are actively calibrated (not fixed) contribute to :math:`k`.
 In ``run_and_score``, :math:`k` is accumulated automatically for each parameter
-that is passed as a non-trivial argument (e.g. each element of ``t_efold`` and
+that is passed as a non-trivial argument (e.g. each element of ``recession_coeff`` and
 ``f_to_discharge`` that is free).  Fixed structural choices (e.g. ``b_deep = 1``
 by convention, not optimization) do not add to :math:`k`.
 
@@ -188,7 +188,7 @@ objects) to restrict the scoring window:
 
     result = run_and_score(
         'config.yml',
-        t_efold=[671, 22, 50881],
+        recession_coeff=[671, 22, 50881],
         f_to_discharge=[0.553, 0.446, 1.0],
         recession_exponents=[4.62, 2.203, 1.0],
         start='1993-01-01',   # exclude first two years of spin-up uncertainty
