@@ -261,6 +261,34 @@ as the initial state of the next:
 The ``final_states`` dict has keys matching ``reservoir_order`` in the driver
 config (e.g. ``{'soil': H_soil, 'intermediate': H_int, 'deep': H_deep}``).
 
+Calibrating initial storage after spin-up
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+``initial_states`` sets the reservoir storage *before* spin-up, which then
+re-equilibrates it.  When a decade's initial condition is itself poorly
+constrained — for example, when little forcing is available ahead of the
+scored window to drive a meaningful spin-up — it can instead be treated as a
+calibration target.  ``post_spinup_states`` injects reservoir depths *after*
+spin-up completes and *before* the scored run begins, overriding the spin-up
+end state:
+
+.. code-block:: python
+
+    result = run_and_score(
+        'config.yml',
+        ...,
+        start='2001-01-01', end='2010-12-31',                  # decade mode
+        post_spinup_states={'reservoirs': [None, None, H0_deep]},  # H0_deep from optimizer
+        post_spinup_k=1,                                       # one free initial-storage parameter
+    )
+
+Only the ``'reservoirs'`` list is used, and any entry left as ``None`` keeps
+that reservoir at its spin-up end state — here, only the deep reservoir's
+initial storage is calibrated.  ``post_spinup_states`` is applied only in
+decade mode (when ``start`` is set) and is ignored for a full-record run.
+Set ``post_spinup_k`` to the number of injected depths the optimizer varies,
+so they are counted as degrees of freedom in the AIC.
+
 Suggested Parameter Sets
 -------------------------
 
