@@ -10,7 +10,7 @@ model run or calibration is attempted.
 
 The returned :class:`Priors` object holds:
 
-* Reservoir e-folding timescales (from spectral + recession decomposition).
+* Reservoir e-folding timescales (from spectral, time-domain, and recession decomposition).
 * Power-law recession exponents (from the B–N recession cloud).
 * Initial reservoir storage depths (from hydrograph separation).
 
@@ -254,7 +254,7 @@ def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,
       long-time value, b ≈ 2.203.  Consider fixing rather than calibrating.
     * *Deep reservoir* (if present): b = 1.0 (linear).
 
-    **Timescales** come from the spectral + recession decomposition in
+    **Timescales** come from the spectral, time-domain, and recession decomposition in
     :class:`~mnished.HydrographSeparation`.  ``None`` entries in
     ``Priors.recession_coeff`` mean the coefficient could not be resolved from the
     data; fall back to calibration defaults in that case.

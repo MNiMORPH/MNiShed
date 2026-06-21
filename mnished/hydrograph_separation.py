@@ -4,14 +4,20 @@ mnished.hydrograph_separation
 Estimate reservoir timescales and initial storage depths from an observed
 discharge time series, without running the hydrological model.
 
-The pipeline has two stages:
+The pipeline has three stages:
 
-1. **Spectral stage** — fit a cascade of linear-reservoir transfer functions
-   (product of Lorentzians) to the power spectral density of Q.  AIC selects
-   the number of fast reservoirs.  Timescales and initial storage for the fast
-   components come from this stage.
+1. **Spectral stage** (fallback / diagnostic) — fit a cascade of
+   linear-reservoir transfer functions (product of Lorentzians) to the power
+   spectral density of Q.  AIC selects the number of fast reservoirs.  This
+   stage provides initial fast-component timescale estimates and serves as a
+   fallback when the time-domain stage cannot resolve a timescale.
 
-2. **Recession stage** — remove the fast components with a recursive digital
+2. **Time-domain stage** (primary) — estimate the fast timescales directly
+   from recession behaviour in the time domain (per-segment-minimum recession
+   fitting).  These estimates replace the corresponding spectral values when
+   available; the spectral values from stage 1 remain as fallbacks.
+
+3. **Recession stage** — remove the fast components with a recursive digital
    filter, leaving a slowly varying residual.  Fit log(Q_residual) vs. time
    on dry-season recession segments to extract τ_karst and its initial storage.
 
