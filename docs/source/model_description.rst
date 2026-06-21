@@ -637,33 +637,33 @@ AIC comparison (see :doc:`calibration`).
   process without good reason.
 
   *Fractional-bypass tile* (``tile_fractions`` + ``tile_residence_times__days``,
-  i.e. ``f_tile`` / ``tau_tile``):
-    A constant fraction of the parent reservoir's recession outflow is
-    diverted into a separate downstream linear sub-reservoir, which then
-    drains directly to stream with timescale :math:`\tau_\text{tile}`.
-    Mathematically:
-    :math:`Q_\text{tile} = f_\text{tile} \cdot Q_\text{next}` (routed
-    through a downstream tile reservoir). The split is *storage-state
-    independent*: the same fraction applies whether the parent reservoir
-    is empty or full. Conceptually represents distributed fast pathways
-    (macropores, perched lenses, partly-drained tile networks) that
-    intercept a roughly constant share of percolating water.
+  i.e. ``f_tile`` / ``tau_tile``).
+  A constant fraction of the parent reservoir's recession outflow is
+  diverted into a separate downstream linear sub-reservoir, which then
+  drains directly to stream with timescale :math:`\tau_\text{tile}`.
+  Mathematically:
+  :math:`Q_\text{tile} = f_\text{tile} \cdot Q_\text{next}` (routed
+  through a downstream tile reservoir). The split is *storage-state
+  independent*: the same fraction applies whether the parent reservoir
+  is empty or full. Conceptually represents distributed fast pathways
+  (macropores, perched lenses, partly-drained tile networks) that
+  intercept a roughly constant share of percolating water.
 
   *Multipath threshold-activated drain* (``multipath_thresholds__mm`` +
-  ``multipath_timescales__days``):
-    A second outflow path operates directly from the parent reservoir's
-    storage, active only when storage exceeds a threshold:
-    :math:`Q_\text{mp} = \max(0, H - H_\text{thr})/\tau_\text{mp}`,
-    added in parallel to the primary recession. The drain is
-    *storage-state dependent*: it contributes nothing below the threshold
-    and an additional linear drainage above it. Conceptually represents a
-    tile-drain network at a fixed installation depth that activates only
-    when the water table rises above drain elevation. The resulting
-    hydrograph response has two distinct timescales (slow matrix
-    recession below threshold; combined faster recession above), which
-    is consistent with a Brutsaert–Nieber recession exponent slightly
-    above 1 with modest scatter — the signature of two parallel linear
-    drainage regimes.
+  ``multipath_timescales__days``).
+  A second outflow path operates directly from the parent reservoir's
+  storage, active only when storage exceeds a threshold:
+  :math:`Q_\text{mp} = \max(0, H - H_\text{thr})/\tau_\text{mp}`,
+  added in parallel to the primary recession. The drain is
+  *storage-state dependent*: it contributes nothing below the threshold
+  and an additional linear drainage above it. Conceptually represents a
+  tile-drain network at a fixed installation depth that activates only
+  when the water table rises above drain elevation. The resulting
+  hydrograph response has two distinct timescales (slow matrix
+  recession below threshold; combined faster recession above), which
+  is consistent with a Brutsaert–Nieber recession exponent slightly
+  above 1 with modest scatter — the signature of two parallel linear
+  drainage regimes.
 
   Choose ``f_tile`` / ``tau_tile`` when you expect the fast pathway
   to be active across the full range of storage states (always-on
