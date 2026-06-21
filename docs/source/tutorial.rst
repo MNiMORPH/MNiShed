@@ -308,7 +308,7 @@ flux attributed to that layer as ``Q_ref``:
 
     for i, res in enumerate(buckets.reservoirs):
         mrt = res.mean_residence_time(Q_ref=Q_mean)
-        print(f"Reservoir {i}: τ={res.t_recession:.1f}d, b={res.recession_exponent:.3f}, "
+        print(f"Reservoir {i}: τ={res.recession_coeff:.1f}d, b={res.recession_exponent:.3f}, "
               f"MRT={mrt:.1f}d  (Q_ref={Q_mean:.3f} mm/d)")
 
 MRT should be reported alongside τ and *b* whenever comparing calibrated
