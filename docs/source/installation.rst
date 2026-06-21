@@ -4,11 +4,34 @@ Installation
 Requirements
 ~~~~~~~~~~~~
 
-* Python 3.8 or later
+* Python 3.9 or later
 * NumPy
 * Pandas
 * PyYAML
 * Matplotlib (for plotting)
+* SciPy
+
+These are installed automatically with the package.
+
+Optional acceleration (Numba)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+MNiShed's daily time loop has a `Numba <https://numba.pydata.org>`_
+just-in-time (JIT) compiled implementation that runs roughly two orders of
+magnitude faster than the pure-Python loop.  This is a large saving for
+calibration, where the model is run thousands of times.  Numba is *not*
+installed with MNiShed; install it separately to enable the fast path:
+
+.. code-block:: bash
+
+    pip install numba
+
+When Numba is present the JIT loop is used automatically; when it is absent,
+MNiShed falls back to the pure-Python loop and the results are identical.
+The JIT path is also bypassed — reverting to pure Python — for the two
+configurations it does not yet cover: the probability-distributed (PDM)
+saturation-excess model and the storage-dependent ``et_water_stress`` ET
+module.
 
 From PyPI
 ~~~~~~~~~
