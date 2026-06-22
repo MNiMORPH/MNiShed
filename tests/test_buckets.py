@@ -147,6 +147,28 @@ def test_record_length(cannon):
 
 
 # ---------------------------------------------------------------------------
+# AIC free-parameter counting
+# ---------------------------------------------------------------------------
+
+def test_hmax_inf_not_counted_in_aic(monkeypatch):
+    """An ``.inf`` Hmax entry means 'no saturation cap' and must not count
+    toward AIC's free-parameter k.
+
+    Two runs that set identical effective reservoir caps but differ only by
+    trailing ``.inf`` Hmax entries must yield the same AIC: same fit, and the
+    same number of genuinely calibrated parameters.
+    """
+    from mnished import run_and_score
+    monkeypatch.chdir(EXAMPLE_DIR)
+    r_one = run_and_score(EXAMPLE_CONFIG, Hmax=[18.0], spin_up_cycles=1)
+    r_inf = run_and_score(EXAMPLE_CONFIG,
+                          Hmax=[18.0, float('inf'), float('inf')],
+                          spin_up_cycles=1)
+    assert np.isfinite(r_one.aic)
+    assert r_one.aic == pytest.approx(r_inf.aic)
+
+
+# ---------------------------------------------------------------------------
 # JIT / pure-Python equivalence
 # ---------------------------------------------------------------------------
 

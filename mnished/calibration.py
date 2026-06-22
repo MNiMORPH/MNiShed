@@ -650,7 +650,11 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     if Hmax is not None:
         for i, val in enumerate(Hmax):
             b.reservoirs[i].Hmax = val
-        k += len(Hmax)
+        # Count only finite caps as free parameters; an .inf entry means
+        # "no saturation-excess cap" (a structural choice, not a calibrated
+        # value), consistent with the non-None counts for f_to_discharge
+        # and pdm_H0.
+        k += sum(1 for v in Hmax if np.isfinite(v))
 
     if pdm_H0 is not None:
         for i, val in enumerate(pdm_H0):
