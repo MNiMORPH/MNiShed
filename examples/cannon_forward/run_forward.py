@@ -9,7 +9,6 @@ Usage (from this directory):
     python run_forward.py
 """
 
-import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mnished import run_and_score

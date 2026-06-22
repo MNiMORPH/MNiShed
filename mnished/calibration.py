@@ -448,8 +448,9 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     fdd_threshold : float or None, optional
         Frozen ground index threshold [°C·day].  The frozen ground index
         accumulates freezing degree-days and decays during warming
-        (Molnau & Bissell 1983, https://westernsnowconference.org/bibliography/1983Molnau.pdf).  When the index
-        exceeds fdd_threshold, infiltration from the top reservoir to
+        (Molnau & Bissell 1983,
+        https://westernsnowconference.org/bibliography/1983Molnau.pdf).  When
+        the index exceeds fdd_threshold, infiltration from the top reservoir to
         deeper layers is set to zero for that timestep (all drainage
         becomes direct runoff).  None (default) disables the effect.
     snow_insulation_k : float or None, optional
@@ -505,7 +506,8 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         depths, one e-folding time is sufficient to resolve the seasonal
         and inter-annual climate memory.  Set to 0 when providing
         initial_states for chained decade runs.
-    metric : {'KGE', 'NSE', 'logKGE', 'KGE_logKGE', 'KGE_logKGE_logFDC', 'KGE_logKGE_logFDC_BFI'}, optional
+    metric : {'KGE', 'NSE', 'logKGE', 'KGE_logKGE', 'KGE_logKGE_logFDC',
+              'KGE_logKGE_logFDC_BFI'}, optional
         Goodness-of-fit metric.  Default is 'KGE'.
         ``'KGE_logKGE'`` returns 0.5*KGE + 0.5*logKGE, balancing
         peak and low-flow performance (Yilmaz et al. 2008).

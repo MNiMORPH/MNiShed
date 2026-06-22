@@ -14,7 +14,10 @@ import os
 import numpy as np
 import pytest
 
-pytest.importorskip("bmipy", reason="bmipy not installed; skipping BMI tests (pip install 'MNiShed[bmi]')")
+pytest.importorskip(
+    "bmipy",
+    reason="bmipy not installed; skipping BMI tests (pip install 'MNiShed[bmi]')",
+)
 
 # ---------------------------------------------------------------------------
 # Helpers

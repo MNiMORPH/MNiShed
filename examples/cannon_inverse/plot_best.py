@@ -21,7 +21,7 @@ import numpy as np
 import matplotlib.pyplot as plt
 import matplotlib.dates as mdates
 from mnished import run_and_score
-from mnished.calibration import _nse, _kge, _log_kge, _kge_logfdc
+from mnished.calibration import _nse, _kge, _log_kge
 
 CFG_TEMPLATE  = 'cannon_cfg_template.yml'
 OBJECTIVE_COL = 'neg_kge'
@@ -101,7 +101,6 @@ def run_model(row):
 
 def make_plot(result, params, save_path, metric=METRIC):
     b     = result.buckets
-    score = result.score
     aic   = result.aic
 
     mask  = (b.hydrodata['Specific Discharge (modeled) [mm/day]'].notna()
@@ -150,7 +149,9 @@ def make_plot(result, params, save_path, metric=METRIC):
     t_karst    = 10 ** _get(params, 'log__t_recession_karst')
     routing_K  = 10 ** _get(params, 'log__routing_K')
 
-    score_str = f'logKGE = {log_kge:.3f}   NSE = {nse:.3f}   KGE = {kge:.3f}   KGE$_{{logFDC}}$ = {kge_logfdc:.3f}   AIC = {aic:.1f}'
+    score_str = (
+        f'logKGE = {log_kge:.3f}   NSE = {nse:.3f}   KGE = {kge:.3f}   '
+        f'KGE$_{{logFDC}}$ = {kge_logfdc:.3f}   AIC = {aic:.1f}')
     param_lines = (
         f'BFI: obs = {result.bfi_obs:.3f},  mod = {result.bfi_mod:.3f}\n'
         f'$\\tau_{{sh}}$ = {t_shallow:.1f} d,  '

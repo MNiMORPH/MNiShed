@@ -337,7 +337,8 @@ if _numba_available:
                 H_res_out[step, r] = H_res[r]
             H_sub_out[step] = H_sub_total
 
-        return Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_tile, H_snow_cur, fgi_cur, H_deficit_carry
+        return (Q_out, SWE_out, H_sub_out, H_res_out, H_res, H_tile,
+                H_snow_cur, fgi_cur, H_deficit_carry)
 
 
 class Reservoir(object):
@@ -1076,7 +1077,8 @@ class Buckets(object):
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
                 Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
                 pdm_H0         = _pdm_H0[i],
-                H0             = self.cfg['initial_conditions']['water_reservoir_effective_depths__mm'][i],
+                H0             = self.cfg['initial_conditions'][
+                    'water_reservoir_effective_depths__mm'][i],
                 f_tile         = _f_tile[i],
                 tau_tile       = _tau_tile[i],
                 junction_type  = _junction_types[i],
@@ -1861,7 +1863,8 @@ class Buckets(object):
                      else np.full(len(_idx), np.nan))
 
             _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
-            _Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow, _finalFgi, _finalDC = _jit_run(
+            (_Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow,
+             _finalFgi, _finalDC) = _jit_run(
                 _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
                 _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
                 _T, _Tmin, _Tmax,

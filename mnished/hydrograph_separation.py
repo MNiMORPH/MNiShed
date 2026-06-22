@@ -204,7 +204,9 @@ class HydrographSeparation:
             ``'initial'``, ``'lower'``, ``'upper'`` in log10(days).
         """
         self._check_fitted()
-        all_names = ['log__recession_coeff_shallow', 'log__recession_coeff_soil', 'log__recession_coeff_karst']
+        all_names = ['log__recession_coeff_shallow',
+                     'log__recession_coeff_soil',
+                     'log__recession_coeff_karst']
         tau_fast_to_slow = self.tau[::-1]   # shallow first, karst last
         n = len(tau_fast_to_slow)
         # Always end with karst; fill fast slots from the front.

@@ -21,7 +21,7 @@ __all__ = [
 # BmiMNiShed requires the optional `bmipy` dependency; expose it only when
 # available (pip install 'mnished[bmi]').
 try:
-    from .bmi import BmiMNiShed
+    from .bmi import BmiMNiShed  # noqa: F401  (optional re-export; see __all__)
     __all__.append("BmiMNiShed")
 except ImportError:
     pass
