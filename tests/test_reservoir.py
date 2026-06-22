@@ -83,6 +83,27 @@ def test_mrt_nonlinear_formula():
     assert res.mean_residence_time(Q_ref=Q_ref) == pytest.approx(expected)
 
 
+def test_mrt_accounts_for_recession_H_ref():
+    """MRT uses tau_eff = tau * H_ref^(b-1), so a non-unit H_ref is reflected.
+
+    Previously mean_residence_time() assumed H_ref = 1 and was wrong (by a
+    factor of H_ref^((b-1)/b)) for reservoirs with a non-unit reference.
+    """
+    tau, b, href, Q_ref = 10.0, 2.0, 50.0, 2.0
+    res = Reservoir(recession_coeff=tau)
+    res.recession_exponent = b
+    res.recession_H_ref = href
+    tau_eff = tau * href ** (b - 1.0)
+    expected = tau_eff ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+    assert res.mean_residence_time(Q_ref=Q_ref) == pytest.approx(expected)
+
+    # And it must differ from the H_ref = 1 value the old formula returned.
+    res1 = Reservoir(recession_coeff=tau)
+    res1.recession_exponent = b
+    assert res.mean_residence_time(Q_ref=Q_ref) != pytest.approx(
+        res1.mean_residence_time(Q_ref=Q_ref))
+
+
 def test_mrt_raises_on_nonpositive_q():
     res = Reservoir(recession_coeff=10.0)
     with pytest.raises(ValueError):

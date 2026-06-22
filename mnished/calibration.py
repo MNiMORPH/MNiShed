@@ -702,14 +702,15 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         k += 1
 
     if recession_exponents is not None:
-        # H_ref per reservoir: τ is the e-folding time at H = H_ref [mm].
-        # Keeps τ bounds interpretation-stable across different exponent values.
-        _H_REFS = [50.0, 100.0, 1000.0]
+        # recession_H_ref stays at the Reservoir default of 1.0, so the
+        # recession coefficient is the raw drainage constant.  A non-unit
+        # H_ref is a redundant gauge: only the product recession_coeff *
+        # H_ref^(b-1) is identifiable, so it just rescales the coefficient
+        # (see Reservoir.discharge / mean_residence_time).
         for i, b_exp in enumerate(recession_exponents):
             if i >= len(b.reservoirs):
                 break
             b.reservoirs[i].recession_exponent = float(b_exp)
-            b.reservoirs[i].recession_H_ref    = _H_REFS[i] if i < len(_H_REFS) else 100.0
         k += recession_exponents_calibrated
 
     if melt_factor is not None and b.has_snowpack:

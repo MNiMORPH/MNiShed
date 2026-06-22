@@ -689,14 +689,20 @@ class Reservoir(object):
         Mean residence time [days] at a reference steady-state discharge.
 
         For a nonlinear reservoir governed by
-        :math:`Q = (H/\\tau)\\cdot(H/H_{\\mathrm{ref}})^{b-1}`, the
-        steady-state storage at discharge *Q_ref* is
-        :math:`H_{ss} = (Q_{\\mathrm{ref}} \\cdot \\tau)^{1/b}`, giving
+        :math:`Q = (H/\\tau)\\cdot(H/H_{\\mathrm{ref}})^{b-1}
+        = H^{b}/\\tau_{\\mathrm{eff}}`, with effective constant
+        :math:`\\tau_{\\mathrm{eff}} = \\tau\\,H_{\\mathrm{ref}}^{\\,b-1}`,
+        the steady-state storage at discharge *Q_ref* is
+        :math:`H_{ss} = (Q_{\\mathrm{ref}} \\cdot \\tau_{\\mathrm{eff}})^{1/b}`,
+        giving
 
         .. math::
 
             \\mathrm{MRT} = \\frac{H_{ss}}{Q_{\\mathrm{ref}}} =
-                \\frac{\\tau^{1/b}}{Q_{\\mathrm{ref}}^{\\,1 - 1/b}}
+                \\frac{\\tau_{\\mathrm{eff}}^{1/b}}{Q_{\\mathrm{ref}}^{\\,1 - 1/b}}
+
+        With the default :math:`H_{\\mathrm{ref}} = 1` this is
+        :math:`\\tau^{1/b} / Q_{\\mathrm{ref}}^{\\,1-1/b}`.
 
         For a linear reservoir (*b* = 1) this reduces exactly to
         :math:`\\tau`.  For *b* > 1, MRT is smaller than :math:`\\tau`
@@ -729,7 +735,8 @@ class Reservoir(object):
         b = self.recession_exponent
         if b == 1.0:
             return self.recession_coeff
-        return self.recession_coeff ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
+        tau_eff = self.recession_coeff * self.recession_H_ref ** (b - 1.0)
+        return tau_eff ** (1.0 / b) / Q_ref ** (1.0 - 1.0 / b)
 
 
 class Snowpack(object):
