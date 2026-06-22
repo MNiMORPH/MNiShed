@@ -1,11 +1,29 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
+type: software
+title: "MNiShed: Miniature watershed hydrological model"
+abstract: >-
+  MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes
+  precipitation through an optional snowpack stage and then through a cascade of
+  one or more linear or power-law reservoirs to produce streamflow, with
+  data-driven or Thornthwaite-Chang evapotranspiration scaled to close the
+  long-run water balance. It implements the CSDMS Basic Model Interface.
 authors:
 - family-names: "Wickert"
   given-names: "Andrew D."
   orcid: "https://orcid.org/0000-0002-9545-3365"
-title: "MNiShed: Miniature watershed hydrological model"
+license: GPL-3.0-or-later
+repository-code: "https://github.com/MNiMORPH/MNiShed"
+url: "https://mnished.readthedocs.io/"
+keywords:
+  - hydrology
+  - rainfall-runoff
+  - lumped model
+  - linear reservoir
+  - snow
+  - evapotranspiration
+  - streamflow
+  - water balance
 version: 2.3.0
 doi: 10.5281/zenodo.6787390
 date-released: 2026-05-11
-url: "https://github.com/MNiMORPH/MNiShed"
