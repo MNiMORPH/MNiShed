@@ -206,11 +206,18 @@ These variables are updated by each call to
    :meth:`~mnished.BmiMNiShed.update`.  They are diagnostic: the
    primary cascade discharge is reported by
    ``land_surface_water__runoff_volume_flux``.  ``baseflow`` is the
-   constant regional-import term (``baseflow_Q``); like ``run_and_score``,
-   it is applied as an output-layer addition and is **not** part of the
-   routed cascade, so it is exposed separately and is *not* folded into
-   ``land_surface_water__runoff_volume_flux``.  A coupled model that wants
-   total discharge including regional import should add the two.
+   constant regional-import term (``baseflow_Q``); it is **not** part of the
+   reservoir cascade, so the streaming BMI keeps it separate and does *not*
+   fold it into ``land_surface_water__runoff_volume_flux``.  A coupled model
+   that wants total discharge including regional import should add the two.
+
+   This differs from :func:`~mnished.calibration.run_and_score`, whose
+   scored discharge *does* include ``baseflow_Q`` — and Nash flow routing
+   (``routing_K``) — applied as an output-layer post-process on the full
+   series.  The per-step BMI applies neither (routing is an inherently batch
+   convolution), so a configuration calibrated with routing and/or baseflow
+   will not reproduce its scored hydrograph through the BMI unless the
+   coupler reapplies those terms.
 
    The CSDMS Standard Names for evapotranspiration, direct runoff, and
    baseflow extend the registered ``land_surface_water__…_volume_flux``

@@ -183,6 +183,18 @@ class BmiMNiShed(Bmi):
 
     where ``area_km2 = bmi._model.drainage_basin_area__km2``.
 
+    **Difference from run_and_score discharge**: the streaming BMI reports
+    the raw per-step reservoir-cascade discharge.  It does *not* apply the
+    two output-layer post-processing steps that
+    :func:`mnished.calibration.run_and_score` performs on the full series:
+    Nash-cascade flow routing (``routing_K``), which is an inherently
+    batch convolution unavailable to a per-step interface, and the constant
+    regional baseflow term (``baseflow_Q``).  Baseflow is instead exposed as
+    its own output (``land_surface_water__baseflow_volume_flux``) so a
+    coupler can add it explicitly.  A configuration calibrated with routing
+    and/or baseflow will therefore not reproduce its scored hydrograph
+    through the BMI unless the coupler reapplies those terms.
+
     **get_value_ptr**: MNiShed stores scalar state as Python floats,
     not numpy arrays.  :meth:`get_value_ptr` therefore returns a fresh
     length-1 array rather than a live pointer into model memory.  Values
@@ -455,9 +467,12 @@ class BmiMNiShed(Bmi):
 
         # Flux-partition components of the total discharge, recorded by the
         # most recent update().  baseflow is the constant regional-import term
-        # (mm/day); it is an output-layer addition and is not part of the
-        # routed cascade, so it is exposed here but not folded into the
-        # land_surface_water__runoff_volume_flux total.
+        # (mm/day); it is not part of the reservoir cascade, so the BMI keeps
+        # it separate and does NOT add it to the land_surface_water__runoff_
+        # volume_flux total (a coupler adds it explicitly).  Note this differs
+        # from run_and_score, which DOES fold baseflow_Q (and Nash routing)
+        # into its scored discharge as an output-layer post-process; see the
+        # class docstring's "Difference from run_and_score discharge".
         if name == "land_surface_water__direct_runoff_volume_flux":
             return np.nan if idx < first else float(m._flux_direct_runoff)
 
