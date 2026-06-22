@@ -178,3 +178,77 @@ def test_jit_matches_pure_python(monkeypatch):
     q_py = b_py.hydrodata[col].astype(float).to_numpy()
 
     np.testing.assert_allclose(q_jit, q_py, rtol=1e-8, atol=1e-10, equal_nan=True)
+
+
+def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
+    """JIT and pure-Python agree with the advanced reservoir mechanics on.
+
+    The basic equivalence test above exercises only linear reservoirs. This
+    one enables the v3 branches the JIT reimplements but that the cannon
+    config never touches: power-law recession, threshold and leakance
+    junctions, a tile drain, and a multipath drain — all at once — to guard
+    those JIT code paths against diverging from the pure-Python loop.
+    """
+    pytest.importorskip("numba")
+    import yaml
+    import mnished
+    import mnished.mnished as _m
+
+    cfg = {
+        'timeseries': {'datafile': os.path.join(EXAMPLE_DIR, "CannonTestInput.csv")},
+        'initial_conditions': {
+            'water_reservoir_effective_depths__mm': [15, 40, 500],
+            'snowpack__mm_SWE': 0,
+        },
+        'catchment': {
+            'drainage_basin_area__km2': 3800,
+            'evapotranspiration_method': 'datafile',
+            'water_year_start_month': 10,
+        },
+        'general': {'spin_up_cycles': 1, 'direct_runoff_fraction': 0.1},
+        'reservoirs': {
+            'recession_timescales__days': [14, 40, 500],
+            'exfiltration_fractions': [0.19, 0.76, 1.0],
+            'maximum_effective_depths__mm': [18.0, float('inf'), float('inf')],
+            'recession_exponents': [2.0, 1.5, 1.0],          # power-law on 0,1
+            'junction_types': ['threshold', 'leakance', 'fraction'],
+            'leakance_R__days': [None, 50.0, None],
+            'H_threshold__mm': [3.0, 0.0, 0.0],
+            'tile_fractions': [0.3, 0.0, 0.0],
+            'tile_residence_times__days': [3.0, None, None],
+            'multipath_thresholds__mm': [None, 20.0, None],
+            'multipath_timescales__days': [None, 5.0, None],
+        },
+        'snowmelt': {
+            'PDD_melt_factor': 1.0,
+            'fgi_decay_coeff': 0.97,
+            'snow_insulation_k': 0.0,
+        },
+        'modules': {
+            'snowpack': True,
+            'frozen_ground': True,
+            'rain_on_snow': True,
+            'direct_runoff': True,
+        },
+    }
+    cfg_path = tmp_path / "advanced.yml"
+    cfg_path.write_text(yaml.safe_dump(cfg))
+
+    q_col = "Specific Discharge (modeled) [mm/day]"
+    s_col = "Subsurface storage (modeled total) [mm]"
+
+    b_jit = mnished.Buckets()
+    b_jit.initialize(str(cfg_path))
+    b_jit.run()
+    q_jit = b_jit.hydrodata[q_col].astype(float).to_numpy()
+    s_jit = b_jit.hydrodata[s_col].astype(float).to_numpy()
+
+    monkeypatch.setattr(_m, "_numba_available", False)
+    b_py = mnished.Buckets()
+    b_py.initialize(str(cfg_path))
+    b_py.run()
+    q_py = b_py.hydrodata[q_col].astype(float).to_numpy()
+    s_py = b_py.hydrodata[s_col].astype(float).to_numpy()
+
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+    np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
