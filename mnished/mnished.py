@@ -109,7 +109,7 @@ if _numba_available:
                 SWE_out[step]  = H_snow_cur
                 H_sub_total = 0.0
                 for r in range(n_res):
-                    H_sub_total += H_res[r]
+                    H_sub_total += H_res[r] + H_tile[r]
                     H_res_out[step, r] = H_res[r]
                 H_sub_out[step] = H_sub_total
                 continue
