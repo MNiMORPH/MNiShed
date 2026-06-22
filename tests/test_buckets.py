@@ -144,3 +144,37 @@ def test_record_length(cannon):
     """Cannon River example spans 3 years (1992–1994, ~1096 days including leap year)."""
     n = len(cannon.hydrodata)
     assert 1050 <= n <= 1150
+
+
+# ---------------------------------------------------------------------------
+# JIT / pure-Python equivalence
+# ---------------------------------------------------------------------------
+
+def test_jit_matches_pure_python(monkeypatch):
+    """The Numba JIT run() and the pure-Python fallback give the same discharge.
+
+    Skipped when Numba is not installed (the JIT path is unavailable, so both
+    runs would be pure-Python). In the Numba-enabled CI job and in local
+    development this guards against the two code paths diverging.
+    """
+    pytest.importorskip("numba")
+    import mnished
+    import mnished.mnished as _m
+
+    col = "Specific Discharge (modeled) [mm/day]"
+    monkeypatch.chdir(EXAMPLE_DIR)
+
+    # JIT path (Numba available and used by run()).
+    b_jit = mnished.Buckets()
+    b_jit.initialize(EXAMPLE_CONFIG)
+    b_jit.run()
+    q_jit = b_jit.hydrodata[col].astype(float).to_numpy()
+
+    # Force the pure-Python fallback for the same configuration.
+    monkeypatch.setattr(_m, "_numba_available", False)
+    b_py = mnished.Buckets()
+    b_py.initialize(EXAMPLE_CONFIG)
+    b_py.run()
+    q_py = b_py.hydrodata[col].astype(float).to_numpy()
+
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-8, atol=1e-10, equal_nan=True)
