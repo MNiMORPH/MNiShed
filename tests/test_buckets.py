@@ -230,7 +230,7 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
         'general': {'spin_up_cycles': 1, 'direct_runoff_fraction': 0.1,
                     'et_alpha': 0.6},
         'reservoirs': {
-            'recession_timescales': [14, 40, 500],
+            'recession_coefficients': [14, 40, 500],
             'exfiltration_fractions': [0.19, 0.76, 1.0],
             'maximum_effective_depths__mm': [18.0, float('inf'), float('inf')],
             'recession_exponents': [2.0, 1.5, 1.0],          # power-law on 0,1

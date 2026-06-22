@@ -80,7 +80,7 @@ guidance on choosing a model structure.
         enforce_water_balance: global
 
     reservoirs:
-        recession_timescales:
+        recession_coefficients:
             - 200      # Soil (placeholder; calibrate)
             - 30       # Intermediate (placeholder; calibrate)
             - 50000    # Deep GW (placeholder; calibrate)
@@ -137,7 +137,7 @@ Adjust Parameters
 
 Model performance depends on the reservoir parameters:
 
-**Residence times** (``recession_timescales``)
+**Residence times** (``recession_coefficients``)
   Larger values = slower response. Order of magnitude ranges:
 
   * Soil zone: days to weeks (fast lateral drainage)

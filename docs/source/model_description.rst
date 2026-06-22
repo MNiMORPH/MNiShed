@@ -434,7 +434,7 @@ reservoir exactly.
 
    **The recession coefficient is not a residence time.** For a nonlinear
    reservoir (:math:`b > 1`), :math:`\tau` (``recession_coeff`` /
-   ``recession_timescales``) is a drainage *constant* with units
+   ``recession_coefficients``) is a drainage *constant* with units
    :math:`\mathrm{day}\cdot\mathrm{mm}^{\,b-1}` — it is an e-folding timescale
    in days *only* for the linear case :math:`b = 1`. The physical residence
    time of a nonlinear reservoir is **not a single number**: it lengthens as

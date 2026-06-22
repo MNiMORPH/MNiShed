@@ -22,7 +22,7 @@ and migration guide.
 - Renamed the `Reservoir` constructor argument `t_efold` / `t_recession`
   → `recession_coeff`.
 - Renamed the YAML key `e_folding_residence_times__days`
-  → `recession_timescales`.
+  → `recession_coefficients`.
 - Renamed the attribute `Reservoir.H_infiltrated` → `Reservoir.H_to_next`.
 - Replaced the boolean `scale_et` with the string-valued
   `enforce_water_balance` (`'water-year'` / `'global'` / `'none'`), as both

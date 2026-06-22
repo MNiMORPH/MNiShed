@@ -1085,7 +1085,7 @@ class Buckets(object):
                                                     [None]  * self.n_reservoirs)
         self.reservoirs = [
             Reservoir(
-                recession_coeff = self.cfg['reservoirs']['recession_timescales'][i],
+                recession_coeff = self.cfg['reservoirs']['recession_coefficients'][i],
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
                 Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
                 pdm_H0         = _pdm_H0[i],
