@@ -324,8 +324,6 @@ if _numba_available:
                     else:
                         avail1 = H_res[1] if H_res[1] > 0.0 else 0.0
                     actual1 = demand1 if demand1 <= avail1 else avail1
-                    if actual1 < 0.0:
-                        actual1 = 0.0
                     H_res[1] -= actual1
 
             # ── Record outputs ────────────────────────────────────────────

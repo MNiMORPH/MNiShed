@@ -205,7 +205,8 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
             'evapotranspiration_method': 'datafile',
             'water_year_start_month': 10,
         },
-        'general': {'spin_up_cycles': 1, 'direct_runoff_fraction': 0.1},
+        'general': {'spin_up_cycles': 1, 'direct_runoff_fraction': 0.1,
+                    'et_alpha': 0.6},
         'reservoirs': {
             'recession_timescales__days': [14, 40, 500],
             'exfiltration_fractions': [0.19, 0.76, 1.0],
@@ -229,6 +230,7 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
             'frozen_ground': True,
             'rain_on_snow': True,
             'direct_runoff': True,
+            'et_reservoir_draw': True,
         },
     }
     cfg_path = tmp_path / "advanced.yml"
@@ -237,8 +239,12 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
     q_col = "Specific Discharge (modeled) [mm/day]"
     s_col = "Subsurface storage (modeled total) [mm]"
 
+    # wp_soil / wp_soil_sigma are run_and_score-only (not YAML); set directly
+    # to exercise the soil wilting-point ET-draw branch.
     b_jit = mnished.Buckets()
     b_jit.initialize(str(cfg_path))
+    b_jit.wp_soil = 25.0
+    b_jit.wp_soil_sigma = 8.0
     b_jit.run()
     q_jit = b_jit.hydrodata[q_col].astype(float).to_numpy()
     s_jit = b_jit.hydrodata[s_col].astype(float).to_numpy()
@@ -246,6 +252,8 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
     monkeypatch.setattr(_m, "_numba_available", False)
     b_py = mnished.Buckets()
     b_py.initialize(str(cfg_path))
+    b_py.wp_soil = 25.0
+    b_py.wp_soil_sigma = 8.0
     b_py.run()
     q_py = b_py.hydrodata[q_col].astype(float).to_numpy()
     s_py = b_py.hydrodata[s_col].astype(float).to_numpy()
