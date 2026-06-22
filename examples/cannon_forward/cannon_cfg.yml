@@ -22,7 +22,7 @@ general:
   spin_up_cycles: 3
 
 reservoirs:
-  recession_timescales__days:
+  recession_timescales:
     - 14      # shallow / interflow
     - 40      # soil zone
     - 500     # karst / bedrock

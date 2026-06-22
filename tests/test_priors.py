@@ -127,7 +127,7 @@ def test_to_yaml_snippet_contains_required_sections():
         pr = suggest_priors(Q, n_reservoirs=2)
     snippet = pr.to_yaml_snippet()
     assert 'reservoirs:' in snippet
-    assert 'recession_timescales__days:' in snippet
+    assert 'recession_timescales:' in snippet
     assert 'recession_exponents:' in snippet
     assert 'initial_conditions:' in snippet
     assert 'water_reservoir_effective_depths__mm:' in snippet

@@ -308,7 +308,7 @@ AIC-based exploration.
 .. code-block:: yaml
 
     reservoirs:
-        recession_timescales__days:
+        recession_timescales:
             - 671      # soil: calibrate; log10 bounds [1.0, 4.5]
             - 22       # intermediate: calibrate; log10 bounds [1.0, 4.5]
             - 50000    # deep: calibrate; log10 bounds [3.5, 5.0]
@@ -485,7 +485,7 @@ structure indicates whether the additional reservoir is warranted.
 .. code-block:: yaml
 
     reservoirs:
-        recession_timescales__days:
+        recession_timescales:
             - 30       # soil/shallow: calibrate
             - 5000     # groundwater: calibrate
         exfiltration_fractions:

@@ -198,7 +198,7 @@ class Priors:
 
         snippet = (
             f"reservoirs:\n"
-            f"    recession_timescales__days:\n{tau_lines}\n"
+            f"    recession_timescales:\n{tau_lines}\n"
             f"    exfiltration_fractions:\n{exfilt_lines}\n"
             f"    maximum_effective_depths__mm:\n{hmax_lines}\n"
             f"    recession_exponents:\n{b_lines}\n"
