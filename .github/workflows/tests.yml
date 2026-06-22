@@ -17,7 +17,7 @@ jobs:
             numpy-version: ">=2"
 
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
@@ -35,7 +35,7 @@ jobs:
     name: Run test suite with the Numba JIT (Python 3.11)
     runs-on: ubuntu-latest
     steps:
-      - uses: actions/checkout@v6
+      - uses: actions/checkout@v7
         with:
           persist-credentials: false
 
