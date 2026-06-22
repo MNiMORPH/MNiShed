@@ -303,6 +303,10 @@ if _numba_available:
                 avail0  = H_res[0] if H_res[0] > 0.0 else 0.0
                 actual0 = demand0 if demand0 <= avail0 else avail0
                 H_res[0] -= actual0
+                # Condensation (negative ET) that overtops the cap runs off.
+                if H_res[0] > Hmax_arr[0]:
+                    qi       += H_res[0] - Hmax_arr[0]
+                    H_res[0]  = Hmax_arr[0]
 
                 if n_res >= 2:
                     demand1 = (1.0 - et_alpha) * ET_t
@@ -325,6 +329,9 @@ if _numba_available:
                         avail1 = H_res[1] if H_res[1] > 0.0 else 0.0
                     actual1 = demand1 if demand1 <= avail1 else avail1
                     H_res[1] -= actual1
+                    if H_res[1] > Hmax_arr[1]:
+                        qi       += H_res[1] - Hmax_arr[1]
+                        H_res[1]  = Hmax_arr[1]
 
             # ── Record outputs ────────────────────────────────────────────
             Q_out[step]   = qi
@@ -1470,15 +1477,26 @@ class Buckets(object):
         ET_pot is partitioned between reservoir 0 (shallow) and reservoir 1
         (soil) by et_alpha.  Each draw is capped at available storage so
         Hwater never goes negative; unmet demand is implicitly lost as
-        water-stress reduction of actual ET.
+        water-stress reduction of actual ET.  A negative ET_pot represents
+        condensation/dew (a water input); if that input would push a
+        reservoir above its Hmax cap, the surplus is shed directly to
+        runoff rather than stored above the cap.
 
         Parameters
         ----------
         ET_pot : float
             Potential ET for this time step [mm/day], already scaled by
             et_scale or the global water-balance multiplier.
+
+        Returns
+        -------
+        float
+            Condensation surplus [mm] shed to runoff because it overtopped
+            a reservoir's Hmax.  Zero in the usual (ET removal) case; the
+            caller adds it to the day's discharge.
         """
         fractions = [self.et_alpha, 1.0 - self.et_alpha]
+        excess = 0.0
         for i, frac in enumerate(fractions):
             if i >= len(self.reservoirs):
                 break
@@ -1498,6 +1516,11 @@ class Buckets(object):
                     H = H - self.wp_soil   # only water above WP is available
             actual = min(demand, max(0.0, H))
             self.reservoirs[i].Hwater -= actual
+            # Condensation (negative ET) that overtops the cap runs off.
+            if self.reservoirs[i].Hwater > self.reservoirs[i].Hmax:
+                excess += self.reservoirs[i].Hwater - self.reservoirs[i].Hmax
+                self.reservoirs[i].Hwater = self.reservoirs[i].Hmax
+        return excess
 
     def _compute_snowpack(self, time_step):
         """
@@ -1730,7 +1753,7 @@ class Buckets(object):
         self._flux_multipath = sum(r.H_multipath for r in self.reservoirs)
 
         if self.use_et_reservoir_draw:
-            self._draw_et_from_reservoirs(
+            qi += self._draw_et_from_reservoirs(
                 self.hydrodata['ET for model [mm/day]'][time_step])
 
         self.hydrodata.at[time_step, 'Specific Discharge (modeled) [mm/day]'] = qi

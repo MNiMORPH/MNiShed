@@ -282,3 +282,42 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
 
     np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
     np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# ET reservoir draw: condensation respects Hmax
+# ---------------------------------------------------------------------------
+
+def _draw_harness(Hmax, H0):
+    """A Buckets with one reservoir, configured for a direct ET-draw call."""
+    from mnished import Buckets, Reservoir
+    b = Buckets()
+    b.reservoirs = [Reservoir(recession_coeff=10.0, Hmax=Hmax, H0=H0)]
+    b.et_alpha = 1.0          # all of ET_pot drawn from / added to reservoir 0
+    b.wp_soil = 0.0
+    b.wp_soil_sigma = 0.0
+    return b
+
+
+def test_et_draw_condensation_above_hmax_runs_off():
+    """Negative ET (condensation) above Hmax sheds to runoff, not stored."""
+    b = _draw_harness(Hmax=20.0, H0=20.0)
+    excess = b._draw_et_from_reservoirs(-5.0)        # 5 mm condensation onto a full reservoir
+    assert b.reservoirs[0].Hwater == pytest.approx(20.0)   # capped at Hmax, not 25
+    assert excess == pytest.approx(5.0)                    # surplus shed to runoff
+
+
+def test_et_draw_condensation_below_hmax_is_stored():
+    """Condensation that stays under Hmax is stored, with no runoff."""
+    b = _draw_harness(Hmax=20.0, H0=15.0)
+    excess = b._draw_et_from_reservoirs(-3.0)        # 3 mm condensation, room to spare
+    assert b.reservoirs[0].Hwater == pytest.approx(18.0)
+    assert excess == pytest.approx(0.0)
+
+
+def test_et_draw_positive_et_returns_no_excess():
+    """A normal (positive ET) draw reduces storage and returns zero excess."""
+    b = _draw_harness(Hmax=20.0, H0=15.0)
+    excess = b._draw_et_from_reservoirs(4.0)
+    assert b.reservoirs[0].Hwater == pytest.approx(11.0)
+    assert excess == pytest.approx(0.0)
