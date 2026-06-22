@@ -28,23 +28,33 @@ Include a minimal reproducible example and your Python and package versions wher
 
 This project follows [PEP 8](https://peps.python.org/pep-0008/) and the
 [CSDMS developer guidelines](https://csdms.colorado.edu/wiki/Development_best_practices),
-with the intentional exceptions listed below.
+with the intentional exceptions described below.
 
-You can check for unintentional style deviations with:
+Style is enforced with [Ruff](https://docs.ruff.rs/) (configured in
+`pyproject.toml`) and checked in CI. Run it locally with:
 ```
-pycodestyle --max-line-length=99 mnished/
+pip install -e ".[lint]"
+ruff check .
 ```
+
+Use the **linter** (`ruff check`), not a formatter: an autoformatter would
+undo the deliberate vertical alignment this project uses (see below).
 
 Write [NumPy-style docstrings](https://numpydoc.readthedocs.io/en/latest/format.html)
 for all public methods.
 
-### Intentional PEP 8 exceptions
+### Intentional style exceptions
+
+The Ruff configuration enforces pyflakes (`F`), line length (99), and the
+meaningful pycodestyle error/warning rules, but deliberately does **not**
+select the whitespace-alignment rules, so the following remain allowed:
 
 | Code | Reason |
 |------|--------|
 | E741 | Single-letter scientific variables are permitted where conventional (e.g., `I` for the Thornthwaite thermal index). |
 | E221 | Extra spaces before `=` are allowed for vertical alignment of related assignments. |
 | E225 | Whitespace around `+` may be omitted inside multi-line string literals for readability. |
+| E241 | Extra spaces after `:`/`,` are allowed for vertical alignment of dict values. |
 | E251 | Spaces around `=` in keyword arguments are allowed when aligning a multi-line constructor call. |
 
 ### CSDMS BMI interface

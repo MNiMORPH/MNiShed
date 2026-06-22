@@ -49,6 +49,9 @@ docs = [
 bmi = [
   "bmipy>=2.0",
 ]
+lint = [
+  "ruff",
+]
 
 [tool.setuptools.dynamic]
 version = {attr = "mnished._version.__version__"}
@@ -61,3 +64,19 @@ Homepage = "https://csdms.colorado.edu/wiki/Model:MNiShed"
 Repository = "https://github.com/MNiMORPH/MNiShed"
 Documentation = "https://mnished.readthedocs.io/"
 Issues = "https://github.com/MNiMORPH/MNiShed/issues"
+
+[tool.ruff]
+line-length = 99
+
+[tool.ruff.lint]
+# pyflakes (F) plus the meaningful pycodestyle errors and warnings. The E1/E2
+# whitespace rules are deliberately not selected: the project uses manual
+# vertical alignment (see CONTRIBUTING.md), which those rules would fight.
+select = ["E4", "E5", "E7", "E9", "F", "W"]
+ignore = [
+  "E741",  # ambiguous single-letter names; conventional in scientific code
+]
+
+[tool.ruff.lint.per-file-ignores]
+# Emits a Dakota input-file template; one copy_files line is necessarily long.
+"examples/cannon_inverse/generate_dakota_in.py" = ["E501"]
