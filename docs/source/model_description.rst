@@ -423,9 +423,25 @@ as a power of storage:
     Q_i = \frac{H_i}{\tau_i} \left(\frac{H_i}{H_{\text{ref}}}\right)^{b_i - 1}
 
 where :math:`b_i \geq 1` is the recession exponent for reservoir :math:`i`
-and :math:`H_{\text{ref}}` is a reference storage depth at which :math:`\tau_i`
-retains its standard linear meaning. Setting :math:`b_i = 1` recovers the
-linear reservoir exactly.
+and :math:`H_{\text{ref}} = 1` mm is a fixed reference storage that
+nondimensionalises the storage ratio. (:math:`H_{\text{ref}}` is a redundant
+gauge: only the product :math:`\tau_i\,H_{\text{ref}}^{\,b_i-1}` is
+identifiable from data, so it is held at 1 mm and the coefficient
+:math:`\tau_i` absorbs it.) Setting :math:`b_i = 1` recovers the linear
+reservoir exactly.
+
+.. warning::
+
+   **The recession coefficient is not a residence time.** For a nonlinear
+   reservoir (:math:`b > 1`), :math:`\tau` (``recession_coeff`` /
+   ``recession_timescales``) is a drainage *constant* with units
+   :math:`\mathrm{day}\cdot\mathrm{mm}^{\,b-1}` — it is an e-folding timescale
+   in days *only* for the linear case :math:`b = 1`. The physical residence
+   time of a nonlinear reservoir is **not a single number**: it lengthens as
+   flow and storage fall. Read it with
+   :meth:`~mnished.Reservoir.mean_residence_time` at a representative
+   :math:`Q_{\text{ref}}`; never interpret a calibrated :math:`\tau` for
+   :math:`b > 1` directly as days.
 
 For :math:`b > 1`, the relationship is superlinear: high-storage states drain
 faster than the linear equivalent, and as storage depletes the drainage rate
@@ -500,6 +516,29 @@ attributed to the reservoir. For a cascade this is approximately the
 mean annual flux passing through that layer. The result is most useful
 as a cross-experiment or cross-basin diagnostic; its absolute value
 depends on the chosen reference flux.
+
+**Worked example.** Two soil reservoirs both fitted with :math:`\tau = 100`
+but with :math:`b = 2` versus :math:`b = 4` look like the *same* parameter as
+raw coefficients, yet their residence times differ — and both lengthen as
+flow falls:
+
+.. list-table::
+   :widths: 34 33 33
+   :header-rows: 1
+
+   * - :math:`Q_{\text{ref}}` [mm day⁻¹]
+     - MRT, :math:`b = 2` [days]
+     - MRT, :math:`b = 4` [days]
+   * - 1.0
+     - 10.0
+     - 3.2
+   * - 0.1
+     - 31.6
+     - 17.8
+
+The raw coefficient :math:`\tau` hides both the cross-:math:`b` difference and
+the flow dependence; :meth:`~mnished.Reservoir.mean_residence_time` makes them
+explicit.
 
 .. note::
 
