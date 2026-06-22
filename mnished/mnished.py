@@ -363,12 +363,12 @@ class Reservoir(object):
         Parameters
         ----------
         recession_coeff : float
-            Recession coefficient [days]. For a linear reservoir (recession
-            exponent b = 1) this equals the true e-folding timescale. For
-            b > 1 it is not a timescale — the actual mean residence time
-            depends on storage level; use :meth:`mean_residence_time` to
-            obtain a physically comparable timescale at a given reference
-            discharge.
+            Recession coefficient. For a linear reservoir (recession
+            exponent b = 1) this equals the true e-folding timescale, in
+            days. For b > 1 it is not a timescale — its units are
+            day·mm^(b-1) and the actual mean residence time depends on
+            storage level; use :meth:`mean_residence_time` to obtain a
+            physically comparable timescale at a given reference discharge.
         f_to_discharge : float, optional
             Fraction of water lost each time step that exits as river
             discharge. The remainder (1 - f_to_discharge) infiltrates to
