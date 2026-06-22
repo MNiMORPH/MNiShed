@@ -179,7 +179,10 @@ def test_jit_matches_pure_python(monkeypatch):
     runs would be pure-Python). In the Numba-enabled CI job and in local
     development this guards against the two code paths diverging.
     """
-    pytest.importorskip("numba")
+    # exc_type=ImportError: numba raises ImportError (not ModuleNotFoundError)
+    # when the installed NumPy is too new for it; skip rather than error, and
+    # silence the pytest-9.1 deprecation around importorskip's default.
+    pytest.importorskip("numba", exc_type=ImportError)
     import mnished
     import mnished.mnished as _m
 
@@ -211,7 +214,10 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
     junctions, a tile drain, and a multipath drain — all at once — to guard
     those JIT code paths against diverging from the pure-Python loop.
     """
-    pytest.importorskip("numba")
+    # exc_type=ImportError: numba raises ImportError (not ModuleNotFoundError)
+    # when the installed NumPy is too new for it; skip rather than error, and
+    # silence the pytest-9.1 deprecation around importorskip's default.
+    pytest.importorskip("numba", exc_type=ImportError)
     import yaml
     import mnished
     import mnished.mnished as _m
