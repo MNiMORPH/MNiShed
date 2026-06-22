@@ -486,7 +486,7 @@ class BmiMNiShed(Bmi):
             return np.nan if idx < first else float(m._flux_multipath)
 
         if name == "land_surface__frozen_ground_index":
-            return float(m._fgi)
+            return np.nan if idx < first else float(m._fgi)
 
         for i, rname in enumerate(_RESERVOIR_DEPTH_NAMES):
             if name == rname:
