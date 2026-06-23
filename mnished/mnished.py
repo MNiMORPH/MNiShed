@@ -1002,6 +1002,37 @@ class Buckets(object):
         self.fdd_threshold = np.inf  # [°C·day]
         self._fgi          = 0.0    # current frozen ground index [°C·day]
 
+    @property
+    def reservoirs(self):
+        """
+        Flat list of every reservoir across all sub-catchments, ordered by
+        sub-catchment and then shallowest-to-deepest within each.
+
+        Backward-compatible view: for the common single-sub-catchment case
+        this is exactly the reservoir cascade as before. Reservoirs may be
+        mutated through this list (it returns the live objects), but the list
+        itself is rebuilt on each access, so assign to ``sub_catchments`` to
+        change the structure.
+        """
+        return [r for sc in self.sub_catchments for r in sc.reservoirs]
+
+    @reservoirs.setter
+    def reservoirs(self, value):
+        # Backward-compatible assignment for programmatic construction:
+        # ``buckets.reservoirs = [...]`` replaces the structure with a single
+        # sub-catchment holding the given cascade (area_fraction = 1.0). Any
+        # existing snowpack reference is preserved. To build multiple parallel
+        # sub-catchments, assign to ``sub_catchments`` directly.
+        snowpack = (self.sub_catchments[0].snowpack
+                    if getattr(self, 'sub_catchments', None) else None)
+        self.sub_catchments = [SubCatchment('basin', 1.0, list(value),
+                                            snowpack=snowpack)]
+
+    @property
+    def n_sub_catchments(self):
+        """Number of parallel sub-catchments (>= 1)."""
+        return len(self.sub_catchments)
+
     def _compute_Chang_I(self, T_monthly_normals):
         """
         Compute the Thornthwaite thermal index I from long-term monthly normal
@@ -1154,7 +1185,7 @@ class Buckets(object):
                                                     [None]  * self.n_reservoirs)
         _mp_timescale     = self.cfg['reservoirs'].get('multipath_timescales__days',
                                                     [None]  * self.n_reservoirs)
-        self.reservoirs = [
+        _basin_reservoirs = [
             Reservoir(
                 recession_coeff = self.cfg['reservoirs']['recession_coefficients'][i],
                 f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
@@ -1171,6 +1202,11 @@ class Buckets(object):
                 multipath_timescale = _mp_timescale[i],
             )
             for i in range(self.n_reservoirs)]
+        # The legacy single-cascade configuration is one sub-catchment covering
+        # the whole basin (area_fraction = 1.0); self.reservoirs (a property)
+        # then exposes the same flat cascade as before. Multi-sub-catchment
+        # YAML parsing is added in a following commit.
+        self.sub_catchments = [SubCatchment('basin', 1.0, _basin_reservoirs)]
         for i, b_exp in enumerate(_recession_exp):
             self.reservoirs[i].recession_exponent = float(b_exp)
 
@@ -1254,6 +1290,10 @@ class Buckets(object):
         if self.has_snowpack:
             # Instantiate snowpack
             self.snowpack = Snowpack(self.melt_factor)  # allow changes to melt factor later
+            # Mirror onto the sub-catchment(s); the time loops still read the
+            # basin-level self.snowpack until per-sub-catchment state is wired in.
+            for sc in self.sub_catchments:
+                sc.snowpack = self.snowpack
         elif 'Mean Temperature [C]' in self.hydrodata.columns and not self.use_snowpack:
             pass  # snowpack deliberately disabled via modules config
         else:
