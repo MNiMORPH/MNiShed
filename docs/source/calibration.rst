@@ -107,6 +107,17 @@ Available metrics
      - −∞ to 1
      - As above but also includes the flow-duration curve.  Useful
        when the full range of flows is of interest.
+   * - ``KGE_logKGE_logFDC_BFI``
+     - −∞ to 1
+     - As above plus a baseflow-index match term
+       (:math:`1 - |\text{BFI}_\text{mod}/\text{BFI}_\text{obs} - 1|`),
+       averaged over all four.  Use when the groundwater partitioning
+       (baseflow fraction) must be matched alongside the hydrograph shape.
+   * - ``logKGE_logFDC_BFI``
+     - −∞ to 1
+     - Low-flow focus: averages logKGE, the log-FDC KGE, and the
+       baseflow-index match, with no high-flow KGE term.  Use for
+       baseflow- and drought-dominated studies.
 
 **Recommendation:** ``KGE_logKGE`` is the default and recommended metric for
 calibrating multi-reservoir models in temperate climates.  It weights peak and
