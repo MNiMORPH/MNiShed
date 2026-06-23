@@ -56,6 +56,12 @@ Ideal for long water-balance studies, climate impact assessments, and ungauged b
 
    bmi
 
+.. toctree::
+   :maxdepth: 2
+   :caption: Performance
+
+   benchmarks
+
 Quick Example
 ~~~~~~~~~~~~~
 

@@ -106,3 +106,7 @@ venv.bak/
 # Temporary files
 *.swp
 .~lock*
+
+# Benchmark run outputs (machine-specific; regenerate with benchmarks/bench_jit.py).
+# The committed figure lives in docs/source/_static/.
+benchmarks/results/

@@ -76,6 +76,10 @@ and migration guide.
   multipath, and recession-exponent parameters via `*_calibrated` arguments;
   single full-record ET multiplier in decade mode.
 - **GitHub Actions CI** with NumPy 2.x in the test matrix.
+- **Performance benchmarks** (`benchmarks/bench_jit.py`, `plot_jit.py`) and a
+  **Performance** documentation page quantifying the Numba JIT speedup
+  (≈100×–400×, scaling with record length; ~72 µs vs. ~0.2 µs per simulated
+  day).
 
 ### Fixed
 
