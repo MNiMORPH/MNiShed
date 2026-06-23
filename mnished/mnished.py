@@ -505,7 +505,8 @@ class Reservoir(object):
         elif f_to_discharge == 0:
             warnings.warn("All water infiltrates when f_to_discharge is 0:"+
                           " you may have created a\n"+
-                          "redundant pass-through water-storage layer")
+                          "redundant pass-through water-storage layer",
+                          stacklevel=2)
         if Hmax < 0:
             raise ValueError("Hmax must be >= 0 (and >0 makes more sense)")
         if pdm_H0 is not None and pdm_H0 <= 0:
@@ -1026,7 +1027,8 @@ class Buckets(object):
         """
         if config_file is None:
             warnings.warn("No configuration file provided; all values needed "+
-                          "for a model run therefore must be set independently.")
+                          "for a model run therefore must be set independently.",
+                          stacklevel=2)
 
         # Parse YAML configuration file
         # And assign variables except for optimization bounds and plotting
@@ -1109,7 +1111,7 @@ class Buckets(object):
         # explicitly too).
         if self.reservoirs[-1].f_to_discharge < 1:
             warnings.warn("f_to_discharge of bottom water-storage layer < 1.\n"+
-                          "You are not conserving mass.")
+                          "You are not conserving mass.", stacklevel=2)
 
         # Set scalar variables based on yaml
         self.melt_factor         = self.cfg['snowmelt']['PDD_melt_factor']
@@ -1187,7 +1189,7 @@ class Buckets(object):
             pass  # snowpack deliberately disabled via modules config
         else:
             warnings.warn('"Mean Temperature [C]" has not been set. '
-                          'No snowpack processes will be simulated.')
+                          'No snowpack processes will be simulated.', stacklevel=2)
 
         # How many times to loop the full time series for the spin-up
         # Maybe I should permit a more sophisticated spin-up at some point!
@@ -1274,7 +1276,8 @@ class Buckets(object):
                 "Thornthwaite ET carries large systematic biases; omitting "
                 "the correction is likely to produce significant mass-balance "
                 "errors. Consider enforce_water_balance='water-year' or 'global', "
-                "or supply measured ET via evapotranspiration_method: datafile."
+                "or supply measured ET via evapotranspiration_method: datafile.",
+                stacklevel=2,
             )
         self.compute_ET()
 
@@ -1380,7 +1383,8 @@ class Buckets(object):
                 f"ET multiplier <= 0 in water year(s) {list(_bad_wy)}. "
                 "Annual discharge exceeds precipitation for those years; "
                 "scaled ET will be zero or negative (water-generating). "
-                "Check gauge data or consider removing those years."
+                "Check gauge data or consider removing those years.",
+                stacklevel=2,
             )
 
     def compute_ET(self):
