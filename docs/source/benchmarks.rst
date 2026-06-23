@@ -1,5 +1,5 @@
-Performance
-===========
+Benchmarks
+==========
 
 MNiShed's daily time loop is the inner loop of every simulation, and during
 calibration it runs thousands of times. v3.0.0 added a `Numba

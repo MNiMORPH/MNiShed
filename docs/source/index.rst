@@ -15,13 +15,20 @@ Ideal for long water-balance studies, climate impact assessments, and ungauged b
 **Key Features**
 ~~~~~~~~~~~~~~~~
 
+* Cascading reservoirs -- linear or nonlinear (power-law) recession, soil to
+  groundwater, with optional leakance/threshold junctions and tile drainage
+* Calibration -- KGE, NSE, and log-KGE scoring; AIC model comparison; baseflow
+  index; flow duration curve; Nash-cascade routing; decadal chaining
+* Fast -- Numba JIT-compiled daily time loop, roughly 100--400× faster than
+  pure Python (see :doc:`benchmarks`)
+* Data-driven setup -- estimate recession exponents (Brutsaert--Nieber) and
+  parameter priors directly from observed streamflow
+* Exact annual water balance -- ET scaled so P - Q - ET = 0 over each water year
+* Flexible ET -- from data or the Thornthwaite--Chang equation; optional
+  storage-dependent and reservoir-draw ET
 * Optional snowpack module -- positive-degree-day melt with rain-on-snow sensible heat
 * Optional frozen ground module -- Molnau & Bissell FGI blocks deep infiltration
-* Cascading reservoirs -- linear or nonlinear (power-law) recession, stacked from soil to groundwater
-* Flexible ET -- read from data or compute with the Thornthwaite--Chang equation
-* Exact annual water balance -- ET scaled so P - Q - ET = 0 over each water year
-* Calibration module -- KGE, NSE, and log-KGE scoring; AIC; baseflow index; flow
-  duration curve; Nash-cascade channel routing; decadal chaining
+* CSDMS Basic Model Interface -- couple MNiShed with other models
 * Python API and command-line interface
 * Lightweight -- minimal dependencies (NumPy, Pandas, SciPy, Matplotlib, PyYAML)
 

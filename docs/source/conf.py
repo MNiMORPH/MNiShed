@@ -22,6 +22,11 @@ extensions = [
 # Render Graphviz diagrams (e.g. the ET-pathway figure) as scalable SVG.
 graphviz_output_format = 'svg'
 
+# Keep the sidebar/TOC to section headings only — do not add every Python
+# object (class/method) to the nav. This stops the API reference from nesting
+# the ``Buckets`` class under the ``Buckets`` section heading. (Sphinx >= 5.2.)
+toc_object_entries = False
+
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']
 
