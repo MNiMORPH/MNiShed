@@ -4,7 +4,7 @@
 [![Tests](https://github.com/MNiMORPH/MNiShed/actions/workflows/tests.yml/badge.svg)](https://github.com/MNiMORPH/MNiShed/actions/workflows/tests.yml)
 
 # MNiShed
-**Miniature watershed hydrological model**
+**Watershed hydrological model**
 
 *MN* = Minnesota · *Mni* = water (Dakota) · *Mini* = small (lumped) · *Shed* = watershed
 
