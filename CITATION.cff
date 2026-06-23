@@ -24,6 +24,6 @@ keywords:
   - evapotranspiration
   - streamflow
   - water balance
-version: 2.3.0
+version: 3.0.0
 doi: 10.5281/zenodo.6787390
-date-released: 2026-05-11
+date-released: 2026-06-23

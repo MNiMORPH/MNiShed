@@ -5,7 +5,7 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
-## [3.0.0] - unreleased
+## [3.0.0] - 2026-06-23
 
 Major release. The library was renamed from **hydroRaVENS** to **MNiShed**,
 the numerical core moved to a Numba JIT time loop, and many new reservoir
@@ -30,6 +30,12 @@ and migration guide.
 - Corrected the misspelled `evapotranspiration_method` value
   `ThorntwaiteChang2019` → `ThornthwaiteChang2019` (config files must update
   the value).
+- Updated the BMI input/output variable names to current CSDMS Standard
+  Names conventions: air temperature → `atmosphere_bottom_air__temperature`;
+  daily extremes → `…__time_min_of_temperature` / `…__time_max_of_temperature`;
+  discharge → `channel_exit_water_x-section__volume_flow_rate`; ET forcing
+  input → `land_surface_water__uncorrected_evapotranspiration_volume_flux`.
+  Existing `BmiMNiShed` couplers must update these variable names.
 
 ### Added
 
@@ -77,6 +83,20 @@ and migration guide.
   `yaml.YAMLError` on a missing or unparseable config file instead of
   printing and calling `sys.exit(2)`, so library, BMI, and notebook callers
   can handle the error; the `mnished` CLI catches it and exits cleanly.
+- **Numba JIT correctness:** the JIT time loop dropped negative-ET
+  (condensation) input to the soil reservoir, and omitted tile storage from
+  the subsurface total on skipped (missing-forcing) days. Both now match the
+  pure-Python loop. (Affected only runs where the JIT actually executed.)
+- **`recession_H_ref` standardized to 1.0** and
+  `Reservoir.mean_residence_time()` corrected — for nonlinear reservoirs it
+  was off by the `H_ref^((b-1)/b)` gauge factor; `run_and_score` no longer
+  sets a hidden `H_ref` anchor.
+- ET-reservoir-draw condensation (negative ET) is now capped at `Hmax`, with
+  the surplus shed to runoff instead of stored above the cap.
+- AIC free-parameter counting counts only finite `Hmax` entries
+  (`inf` = no cap, not a calibrated parameter).
+- The `land_surface__frozen_ground_index` BMI output returns `NaN` before the
+  first `update()`, consistent with the other outputs.
 - `H_deficit_carry` is now reset before full-record spin-up, before
   pre-decade spin-up, and when initial / post-spin-up states are applied
   (affected multi-decade chained calibrations).
