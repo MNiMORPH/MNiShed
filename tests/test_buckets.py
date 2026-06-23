@@ -44,6 +44,15 @@ def cannon():
     return b
 
 
+def test_initialize_missing_config_raises(tmp_path):
+    """A missing config file raises FileNotFoundError instead of sys.exit()."""
+    import mnished
+
+    b = mnished.Buckets()
+    with pytest.raises(FileNotFoundError):
+        b.initialize(str(tmp_path / "nonexistent.yml"))
+
+
 # ---------------------------------------------------------------------------
 # Smoke / output columns
 # ---------------------------------------------------------------------------

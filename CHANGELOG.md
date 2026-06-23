@@ -73,6 +73,10 @@ and migration guide.
 
 ### Fixed
 
+- `Buckets.initialize()` now **raises** `FileNotFoundError` /
+  `yaml.YAMLError` on a missing or unparseable config file instead of
+  printing and calling `sys.exit(2)`, so library, BMI, and notebook callers
+  can handle the error; the `mnished` CLI catches it and exits cleanly.
 - `H_deficit_carry` is now reset before full-record spin-up, before
   pre-decade spin-up, and when initial / post-spin-up states are applied
   (affected multi-decade chained calibrations).

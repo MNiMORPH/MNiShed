@@ -1036,12 +1036,15 @@ class Buckets(object):
             try:
                 with open(config_file, "r") as yamlfile:
                     self.cfg = yaml.load(yamlfile, Loader=yaml.FullLoader)
-            except FileNotFoundError:
-                print("\nConfig file not found:", config_file, "\n")
-                sys.exit(2)
+            except FileNotFoundError as e:
+                # Raise rather than sys.exit so library / BMI / notebook callers
+                # can handle a bad config; the CLI (main()) translates this into
+                # a clean exit code.
+                raise FileNotFoundError(
+                    f"Config file not found: {config_file}") from e
             except yaml.YAMLError as e:
-                print("\nCould not parse config file:", config_file, "\n", e)
-                sys.exit(2)
+                raise yaml.YAMLError(
+                    f"Could not parse config file {config_file}:\n{e}") from e
 
         # Read input time series from the CSV path specified in the config
         self.hydrodata = pd.read_csv(
@@ -2114,7 +2117,13 @@ def main():
     args = parser.parse_args(args=None if sys.argv[1:] else ['--help'])
 
     b = Buckets()
-    b.initialize(args.configfile)
+    try:
+        b.initialize(args.configfile)
+    except (FileNotFoundError, yaml.YAMLError) as e:
+        # initialize() raises on a bad config; at the CLI boundary, translate
+        # that into a clean stderr message and exit code 2 (no traceback).
+        print(f"\n{e}\n", file=sys.stderr)
+        sys.exit(2)
     b.run()
     b.finalize()
 
