@@ -57,10 +57,12 @@ For development or contributing to the project:
 
     git clone https://github.com/MNiMORPH/MNiShed.git
     cd MNiShed
-    pip install -e .
+    pip install -e '.[bmi,jit]'   # optional extras: bmi, jit, docs, lint
 
-This installs the package in "editable" mode, so changes to the source code are 
-reflected immediately without reinstalling.
+This installs the package in "editable" mode, so changes to the source code are
+reflected immediately without reinstalling.  The optional extras are ``bmi``
+(CSDMS BMI wrapper), ``jit`` (Numba acceleration), ``docs`` (build the
+documentation), and ``lint`` (Ruff).
 
 Installing Documentation Dependencies
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~

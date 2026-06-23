@@ -5,8 +5,8 @@ Theory & Mathematical Formulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
 MNiShed is a lumped, daily-timestep conceptual hydrological model. Water 
-moves through three sequential processes each day: optional snowpack accumulation/melt, 
-routing through cascading linear reservoirs, and evapotranspiration.
+moves through three sequential processes each day: optional snowpack accumulation/melt,
+routing through cascading reservoirs (linear or nonlinear power-law), and evapotranspiration.
 
 All fluxes are expressed as depths over the drainage basin (mm/day).
 Mass is conserved to within numerical precision.

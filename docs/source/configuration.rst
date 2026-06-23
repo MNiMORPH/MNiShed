@@ -197,7 +197,8 @@ Example:
 The ``reservoirs`` section
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This section defines the cascade of linear reservoirs (1 or more).
+This section defines the cascade of reservoirs (1 or more); each may be
+linear or nonlinear (power-law, via ``recession_exponents``).
 All lists must have the same length.
 
 .. list-table::
@@ -209,7 +210,12 @@ All lists must have the same length.
      - Description
    * - ``recession_coefficients``
      - list of floats
-     - Drainage time constant (days) for each reservoir
+     - Recession coefficient per reservoir. For a **linear** reservoir
+       (``recession_exponents`` entry = 1) this is the e-folding drainage
+       timescale in days; for a **nonlinear** reservoir (exponent > 1) it is a
+       drainage coefficient (units day·mm^(b−1)), **not** a timescale — use
+       :meth:`~mnished.Reservoir.mean_residence_time` for a comparable
+       timescale (see :ref:`mean residence time <mean-residence-time>`).
    * - ``exfiltration_fractions``
      - list of floats
      - Fraction (0–1) of drainage exiting as discharge. Used by the

@@ -137,8 +137,16 @@ Adjust Parameters
 
 Model performance depends on the reservoir parameters:
 
-**Residence times** (``recession_coefficients``)
-  Larger values = slower response. Order of magnitude ranges:
+**Recession coefficients** (``recession_coefficients``)
+  For a **linear** reservoir (``recession_exponents`` entry = 1) this is the
+  e-folding timescale in days. For a **nonlinear** reservoir (exponent > 1, as
+  the soil and intermediate reservoirs are in the example above) it is a
+  drainage coefficient (units day·mm^(b−1)), **not** a timescale — use
+  :meth:`~mnished.Reservoir.mean_residence_time` for a comparable timescale
+  (see :ref:`mean residence time <mean-residence-time>`). The order-of-magnitude
+  *timescale* ranges
+  below are the linear interpretation (and the approximate mean residence
+  time):
 
   * Soil zone: days to weeks (fast lateral drainage)
   * Intermediate (shallow GW / outwash): weeks to months

@@ -70,7 +70,7 @@ The output looks like::
     MNiShed data-driven priors
     ============================================================
 
-    E-folding residence times (fastest → slowest):
+    Recession coefficients (fastest → slowest):
       soil    : 28.4 days
       karst   : 847.3 days
       deep    : could not be estimated — use calibration default
