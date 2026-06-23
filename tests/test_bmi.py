@@ -30,6 +30,7 @@ EXAMPLE_CONFIG = "cannon_cfg.yml"
 
 P_NAME = "atmosphere_water__liquid_equivalent_precipitation_rate"
 T_NAME = "atmosphere_bottom_air__temperature"
+ET_NAME = "land_surface_water__uncorrected_evapotranspiration_volume_flux"
 Q_NAME = "land_surface_water__runoff_volume_flux"
 Q_VOL_NAME = "channel_exit_water_x-section__volume_flow_rate"
 SWE_NAME = "snowpack__liquid_equivalent_depth"
@@ -272,6 +273,14 @@ def test_set_value_writes_to_dataframe(bmi):
     bmi.set_value(P_NAME, np.array([999.0]))
     col = "Precipitation [mm/day]"
     assert bmi._model.hydrodata.at[idx, col] == pytest.approx(999.0)
+
+
+def test_set_value_writes_uncorrected_et_input(bmi):
+    """The renamed uncorrected-ET input maps to the ET forcing column."""
+    idx = bmi._model._timestep_i
+    bmi.set_value(ET_NAME, np.array([4.2]))
+    col = "Evapotranspiration [mm/day]"
+    assert bmi._model.hydrodata.at[idx, col] == pytest.approx(4.2)
 
 
 def test_set_value_then_update_uses_overridden_value(bmi):
