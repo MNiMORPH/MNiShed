@@ -34,8 +34,9 @@ and migration guide.
 ### Added
 
 - **Numba JIT-compiled time loop** with roughly two orders of magnitude
-  speedup. Numba is an optional dependency; the pure-Python loop is the
-  fallback and is used for the PDM and `et_water_stress` configurations.
+  speedup. Numba is an optional dependency, installable via the `jit` extra
+  (`pip install mnished[jit]`); the pure-Python loop is the fallback and is
+  used for the PDM and `et_water_stress` configurations.
 - **Power-law (nonlinear) recession** (`recession_exponents`) with exact
   integration, plus `Reservoir.mean_residence_time()`.
 - **Junction types between reservoirs**: `fraction` (default), `leakance`
