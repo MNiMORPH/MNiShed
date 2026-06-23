@@ -65,16 +65,14 @@ the next decade's run_and_score() call with spin_up_cycles=0 so that water
 storage is physically continuous across decade boundaries.
 """
 
-from collections import namedtuple
-
 import math
 import warnings
+from collections import namedtuple
 
 import numpy as np
 import pandas as pd
 
 from .mnished import Buckets, Reservoir
-
 
 # ---------------------------------------------------------------------------
 # Named tuple for return value

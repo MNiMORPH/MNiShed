@@ -1,9 +1,9 @@
 from ._version import __version__
-from .mnished import Reservoir, Snowpack, Buckets
 from .calibration import CalibResult, run_and_score
 from .hydrograph_separation import HydrographSeparation
+from .mnished import Buckets, Reservoir, Snowpack
+from .priors import Priors, suggest_priors
 from .recession import BrutsaertNieber
-from .priors import suggest_priors, Priors
 
 __all__ = [
     "Reservoir",

@@ -32,8 +32,8 @@ import warnings
 
 import numpy as np
 
-from .recession import BrutsaertNieber
 from .hydrograph_separation import HydrographSeparation
+from .recession import BrutsaertNieber
 
 # Theoretical Brutsaert & Nieber (1977) long-time baseflow recession exponent
 # (b_HR in MNiShed notation, corresponding to B-N slope n ≈ 1.55).
