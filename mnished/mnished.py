@@ -908,7 +908,7 @@ class Buckets(object):
         """
         Initialize the watershed model.
 
-        If using the ThorntwaiteChang2019 ET method, pass
+        If using the ThornthwaiteChang2019 ET method, pass
         T_monthly_normals here so that the thermal index I and exponent
         a are computed once from climatological normals and remain fixed
         throughout the simulation.
@@ -919,7 +919,7 @@ class Buckets(object):
             Long-term mean monthly temperatures (°C) used to compute the
             Thornthwaite thermal index I and exponent a per Chang et al.
             (2019), https://doi.org/10.1002/ird.2309. Required when
-            evapotranspiration_method is 'ThorntwaiteChang2019'.
+            evapotranspiration_method is 'ThornthwaiteChang2019'.
         """
         # Thornthwaite thermal index and exponent, per Chang et al. (2019)
         # https://doi.org/10.1002/ird.2309
@@ -1020,7 +1020,7 @@ class Buckets(object):
               to AIC comparisons.
             * ``'none'`` — Use raw ET without correction. Appropriate only
               when supplying trusted measured ET (e.g. eddy covariance).
-              Using ``'none'`` with ThorntwaiteChang2019 will raise a
+              Using ``'none'`` with ThornthwaiteChang2019 will raise a
               warning because Thornthwaite ET carries large systematic
               biases.
         """
@@ -1117,11 +1117,11 @@ class Buckets(object):
         self.fgi_decay_coeff     = self.cfg['snowmelt'].get('fgi_decay_coeff',     0.97)
         self.fdd_threshold       = self.cfg['snowmelt'].get('fdd_threshold',       np.inf)
         self.et_method = self.cfg['catchment']['evapotranspiration_method']
-        if self.et_method == 'ThorntwaiteChang2019' and not hasattr(self, 'Chang_I'):
+        if self.et_method == 'ThornthwaiteChang2019' and not hasattr(self, 'Chang_I'):
             n_years = len(self.hydrodata) / 365.25
             if n_years < 20:
                 warnings.warn(
-                    f"ThorntwaiteChang2019: monthly temperature normals were not provided "
+                    f"ThornthwaiteChang2019: monthly temperature normals were not provided "
                     f"and will be computed from the {n_years:.1f}-year input record. "
                     f"For short records this may not represent long-term climatology. "
                     f"Pass T_monthly_normals to Buckets() for reliable results.",
@@ -1267,9 +1267,9 @@ class Buckets(object):
             self.compute_global_ET_multiplier()
         elif self.enforce_water_balance == 'water-year':
             self.compute_ET_multiplier()
-        elif self.et_method == 'ThorntwaiteChang2019':
+        elif self.et_method == 'ThornthwaiteChang2019':
             warnings.warn(
-                "enforce_water_balance='none' with ThorntwaiteChang2019: Thornthwaite ET "
+                "enforce_water_balance='none' with ThornthwaiteChang2019: Thornthwaite ET "
                 "will not be rescaled to close the water balance. "
                 "Thornthwaite ET carries large systematic biases; omitting "
                 "the correction is likely to produce significant mass-balance "
@@ -1410,11 +1410,11 @@ class Buckets(object):
         """
         if self.et_method == 'datafile':
             _raw_ET = self.hydrodata['Evapotranspiration [mm/day]']
-        elif self.et_method == 'ThorntwaiteChang2019':
+        elif self.et_method == 'ThornthwaiteChang2019':
             _raw_ET = self.evapotranspiration_Chang2019()
         else:
             raise ValueError('evapotranspiration_method must be "datafile" or '+
-                             '"ThorntwaiteChang2019".')
+                             '"ThornthwaiteChang2019".')
 
         if self.use_et_water_stress or (self.use_et_reservoir_draw and
                                          self.enforce_water_balance == 'none'):

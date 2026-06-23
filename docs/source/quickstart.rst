@@ -29,13 +29,13 @@ MNiShed requires daily time series data in CSV format. Required and optional col
      - Snowpack and frozen-ground modules
    * - ``Minimum Temperature [C]``
      - °C
-     - DTR-based frozen-ground decay; ``ThorntwaiteChang2019`` ET
+     - DTR-based frozen-ground decay; ``ThornthwaiteChang2019`` ET
    * - ``Maximum Temperature [C]``
      - °C
-     - DTR-based frozen-ground decay; ``ThorntwaiteChang2019`` ET
+     - DTR-based frozen-ground decay; ``ThornthwaiteChang2019`` ET
    * - ``Photoperiod [hr]``
      - hours
-     - ``ThorntwaiteChang2019`` ET method
+     - ``ThornthwaiteChang2019`` ET method
    * - ``Evapotranspiration [mm/day]``
      - mm/day
      - ``datafile`` ET method
@@ -72,7 +72,7 @@ guidance on choosing a model structure.
 
     catchment:
         drainage_basin_area__km2: 3800
-        evapotranspiration_method: ThorntwaiteChang2019
+        evapotranspiration_method: ThornthwaiteChang2019
         water_year_start_month: 10
 
     general:

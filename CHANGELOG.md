@@ -27,6 +27,9 @@ and migration guide.
 - Replaced the boolean `scale_et` with the string-valued
   `enforce_water_balance` (`'water-year'` / `'global'` / `'none'`), as both
   a `run_and_score()` argument and a YAML key.
+- Corrected the misspelled `evapotranspiration_method` value
+  `ThorntwaiteChang2019` → `ThornthwaiteChang2019` (config files must update
+  the value).
 
 ### Added
 

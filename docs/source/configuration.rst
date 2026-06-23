@@ -91,7 +91,7 @@ The ``catchment`` section
      - Basin area (km²); used for discharge-to-depth conversion
    * - ``evapotranspiration_method``
      - string
-     - ``datafile`` or ``ThorntwaiteChang2019``. See note below.
+     - ``datafile`` or ``ThornthwaiteChang2019``. See note below.
    * - ``water_year_start_month``
      - int
      - Month (1–12) when water year begins (10 = October for USGS)
@@ -104,7 +104,7 @@ The ``catchment`` section
 
 .. note::
 
-    ``ThorntwaiteChang2019`` requires long-term monthly temperature
+    ``ThornthwaiteChang2019`` requires long-term monthly temperature
     normals to compute the Thornthwaite heat index :math:`I` and
     exponent :math:`a`. If normals are not supplied via
     ``T_monthly_normals`` in the :class:`~mnished.Buckets`
@@ -177,7 +177,7 @@ The ``general`` section
 
        ``'none'`` — use raw ET without any correction. Appropriate only when
        supplying trusted measured ET (e.g. eddy covariance). Using ``'none'``
-       with ``ThorntwaiteChang2019`` raises a warning because Thornthwaite ET
+       with ``ThornthwaiteChang2019`` raises a warning because Thornthwaite ET
        carries large systematic biases. Also appropriate when ``et_scale`` is
        a free calibration parameter (see :ref:`et-modules`).
 
@@ -526,7 +526,7 @@ Complete Example
 
     catchment:
         drainage_basin_area__km2: 3800
-        evapotranspiration_method: ThorntwaiteChang2019  # normals auto-computed if not supplied
+        evapotranspiration_method: ThornthwaiteChang2019  # normals auto-computed if not supplied
         water_year_start_month: 10
         baseflow_Q: 0.0   # mm/day regional groundwater import; 0 = disabled
 
@@ -571,7 +571,7 @@ sets. Actual values depend strongly on the specific catchment.
         PDD_melt_factor: 1.5
     
     catchment:
-        evapotranspiration_method: ThorntwaiteChang2019
+        evapotranspiration_method: ThornthwaiteChang2019
 
 **Humid lowland catchment:**
 

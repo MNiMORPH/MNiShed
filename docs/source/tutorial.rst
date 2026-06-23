@@ -38,9 +38,9 @@ Optional columns activate additional model processes:
 
     Evapotranspiration [mm/day]  # measured ET; enables evapotranspiration_method: datafile
     Mean Temperature [C]         # activates snowpack and frozen-ground modules
-    Minimum Temperature [C]      # activates DTR-based FGI decay and ThorntwaiteChang2019
-    Maximum Temperature [C]      # activates DTR-based FGI decay and ThorntwaiteChang2019
-    Photoperiod [hr]             # required for ThorntwaiteChang2019 ET method
+    Minimum Temperature [C]      # activates DTR-based FGI decay and ThornthwaiteChang2019
+    Maximum Temperature [C]      # activates DTR-based FGI decay and ThornthwaiteChang2019
+    Photoperiod [hr]             # required for ThornthwaiteChang2019 ET method
 
 All columns must be at a daily timestep.  Missing values in the
 discharge column are allowed and are excluded from scoring.
@@ -143,7 +143,7 @@ Create a YAML configuration file. Start from the snippet produced by
 
     catchment:
         drainage_basin_area__km2: 3800
-        evapotranspiration_method: ThorntwaiteChang2019
+        evapotranspiration_method: ThornthwaiteChang2019
         water_year_start_month: 10
 
     general:
