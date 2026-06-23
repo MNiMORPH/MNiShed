@@ -43,12 +43,12 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install package, Numba, and a compatible NumPy
-        # Numba trails NumPy by a few releases. Pin NumPy to the range Numba
-        # supports so `import numba` succeeds and the JIT time loop actually
-        # compiles — otherwise the model silently falls back to pure Python
-        # and the JIT path goes untested.
-        run: pip install '.[bmi]' pytest numba 'numpy<2.3'
+      - name: Install package with the jit extra (Numba + compatible NumPy)
+        # The `jit` extra pins NumPy to the range Numba supports, so
+        # `import numba` succeeds and the JIT time loop actually compiles —
+        # otherwise the model silently falls back to pure Python and the JIT
+        # path goes untested. Using the extra here keeps CI and users in sync.
+        run: pip install '.[bmi,jit]' pytest
 
       - name: Run tests (Numba JIT path exercised)
         run: python -m pytest tests/ -v

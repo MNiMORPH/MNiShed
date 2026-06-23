@@ -19,12 +19,18 @@ Optional acceleration (Numba)
 MNiShed's daily time loop has a `Numba <https://numba.pydata.org>`_
 just-in-time (JIT) compiled implementation that runs roughly two orders of
 magnitude faster than the pure-Python loop.  This is a large saving for
-calibration, where the model is run thousands of times.  Numba is *not*
-installed with MNiShed; install it separately to enable the fast path:
+calibration, where the model is run thousands of times.  Numba is *not* a
+core dependency; install it with the ``jit`` extra, which pulls in Numba
+together with a compatible NumPy:
 
 .. code-block:: bash
 
-    pip install numba
+    pip install mnished[jit]
+
+The extra caps NumPy at ``<2.3`` (the newest release the current Numba
+supports); a bare ``pip install numba`` also works in an environment that
+already has ``numpy < 2.3``.  Without a compatible NumPy, ``import numba``
+fails and MNiShed silently uses the pure-Python loop.
 
 When Numba is present the JIT loop is used automatically; when it is absent,
 MNiShed falls back to the pure-Python loop and the results are identical.
