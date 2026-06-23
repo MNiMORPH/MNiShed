@@ -31,8 +31,11 @@ To install from source for development:
 ```bash
 git clone https://github.com/MNiMORPH/MNiShed.git
 cd MNiShed
-pip install -e .
+pip install -e '.[bmi,jit]'   # optional extras: bmi, jit, docs, lint
 ```
+
+The optional extras are `bmi` (CSDMS BMI wrapper), `jit` (Numba JIT
+acceleration), `docs` (build the documentation), and `lint` (Ruff).
 
 ## Quick start
 
