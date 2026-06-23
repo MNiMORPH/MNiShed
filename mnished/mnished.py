@@ -1089,6 +1089,117 @@ class Buckets(object):
         """
         return [reservoir.Hwater for reservoir in self.reservoirs]
 
+    @staticmethod
+    def _build_reservoir_cascade(res_cfg, H0_list):
+        """
+        Build a vertical reservoir cascade from a "reservoirs" config block.
+
+        Parameters
+        ----------
+        res_cfg : dict
+            A "reservoirs" config block: per-reservoir parameter lists keyed
+            by name (recession_coefficients, exfiltration_fractions, ...). All
+            lists must have the same length as H0_list.
+        H0_list : list of float
+            Initial water depth [mm] for each reservoir, ordered shallowest to
+            deepest. Its length sets the number of reservoirs in the cascade.
+
+        Returns
+        -------
+        list of Reservoir
+            The cascade, ordered shallowest (index 0) to deepest.
+        """
+        n = len(H0_list)
+        for _key, _vals in res_cfg.items():
+            if len(_vals) != n:
+                raise ValueError(
+                    f'"{_key}" within "reservoirs" has {len(_vals)} entries, '
+                    f'implying a different number of subsurface water '
+                    f'reservoirs than the {n} initial water depths '
+                    f'(water_reservoir_effective_depths__mm).')
+
+        _pdm_H0        = res_cfg.get('pdm_H0__mm',               [None]  * n)
+        _f_tile        = res_cfg.get('tile_fractions',           [0.0]   * n)
+        _tau_tile      = res_cfg.get('tile_residence_times__days', [None] * n)
+        _recession_exp = res_cfg.get('recession_exponents',     [1.0]   * n)
+        _junction_types = res_cfg.get('junction_types',     ['fraction'] * n)
+        _leakance_R    = res_cfg.get('leakance_R__days',        [None]  * n)
+        _H_threshold   = res_cfg.get('H_threshold__mm',         [0.0]   * n)
+        _mp_threshold  = res_cfg.get('multipath_thresholds__mm', [None] * n)
+        _mp_timescale  = res_cfg.get('multipath_timescales__days', [None] * n)
+
+        reservoirs = [
+            Reservoir(
+                recession_coeff = res_cfg['recession_coefficients'][i],
+                f_to_discharge  = res_cfg['exfiltration_fractions'][i],
+                Hmax            = res_cfg['maximum_effective_depths__mm'][i],
+                pdm_H0          = _pdm_H0[i],
+                H0              = H0_list[i],
+                f_tile          = _f_tile[i],
+                tau_tile        = _tau_tile[i],
+                junction_type   = _junction_types[i],
+                leakance_R      = _leakance_R[i],
+                H_threshold     = _H_threshold[i] if _H_threshold[i] is not None else 0.0,
+                multipath_threshold = _mp_threshold[i],
+                multipath_timescale = _mp_timescale[i],
+            )
+            for i in range(n)]
+        for i, b_exp in enumerate(_recession_exp):
+            reservoirs[i].recession_exponent = float(b_exp)
+        return reservoirs
+
+    def _build_sub_catchments(self, sc_cfgs):
+        """
+        Build the list of parallel SubCatchments from a "sub_catchments" config.
+
+        Parameters
+        ----------
+        sc_cfgs : list of dict
+            One entry per sub-catchment. Each requires a unique ``name``, an
+            ``area_fraction``, and a ``reservoirs`` block (same schema as the
+            top-level legacy block). An optional ``initial_conditions`` block
+            supplies per-reservoir initial depths
+            (water_reservoir_effective_depths__mm); absent depths default to 0.
+            A ``forcing`` block is reserved for a future release and raises
+            NotImplementedError if present.
+
+        Returns
+        -------
+        list of SubCatchment
+
+        Raises
+        ------
+        ValueError
+            If names are not unique, or the area fractions do not sum to 1.
+        """
+        if not isinstance(sc_cfgs, list) or len(sc_cfgs) < 1:
+            raise ValueError(
+                '"sub_catchments" must be a non-empty list of sub-catchment '
+                'definitions.')
+
+        _names = [sc['name'] for sc in sc_cfgs]
+        if len(set(_names)) != len(_names):
+            raise ValueError(
+                f'Sub-catchment names must be unique; got {_names}.')
+
+        _area_sum = sum(sc['area_fraction'] for sc in sc_cfgs)
+        if abs(_area_sum - 1.0) > 1e-6:
+            raise ValueError(
+                f'Sub-catchment area_fraction values must sum to 1.0; '
+                f'got {_area_sum:.6f}.')
+
+        sub_catchments = []
+        for sc in sc_cfgs:
+            _res_cfg = sc['reservoirs']
+            _ic = sc.get('initial_conditions', {})
+            _n = len(_res_cfg['recession_coefficients'])
+            _H0 = _ic.get('water_reservoir_effective_depths__mm', [0.0] * _n)
+            _reservoirs = self._build_reservoir_cascade(_res_cfg, _H0)
+            sub_catchments.append(
+                SubCatchment(sc['name'], sc['area_fraction'], _reservoirs,
+                             forcing=sc.get('forcing')))
+        return sub_catchments
+
     def initialize(self, config_file=None, enforce_water_balance=None):
         """
         Set up the model from a YAML configuration file.
@@ -1148,67 +1259,26 @@ class Buckets(object):
             self.cfg['timeseries']['datafile'],
             parse_dates=['Date'])
 
-        # Set variables on reservoirs
-        # First, check if all reservoirs have the same length
-        for _key in self.cfg['reservoirs'].keys():
-            if len(self.cfg['reservoirs'][_key]) == \
-                    len(self.cfg['initial_conditions']['water_reservoir_effective_depths__mm']):
-                pass
-            else:
-                raise ValueError(_key + ' within "reservoirs" contains a\n'+
-                                 'different number of entries, implying'+
-                                 'a different number of subsurface water\n'+
-                                 'reservoirs, than '+
-                                 'water_reservoir_effective_depths__mm'+
-                                 ' within "initial_conditions".')
-
-        # If all are the same length, then we will assign a number of reservoirs
-        self.n_reservoirs = len(
-            self.cfg['initial_conditions']['water_reservoir_effective_depths__mm'])
-        # Using this, we will build a list of reservoir objects
-        # and initialize them based on the provided inputs
-        _pdm_H0        = self.cfg['reservoirs'].get('pdm_H0__mm',
-                                                    [None]  * self.n_reservoirs)
-        _f_tile        = self.cfg['reservoirs'].get('tile_fractions',
-                                                    [0.0]   * self.n_reservoirs)
-        _tau_tile      = self.cfg['reservoirs'].get('tile_residence_times__days',
-                                                    [None]  * self.n_reservoirs)
-        _recession_exp = self.cfg['reservoirs'].get('recession_exponents',
-                                                    [1.0]   * self.n_reservoirs)
-        _junction_types   = self.cfg['reservoirs'].get('junction_types',
-                                                    ['fraction'] * self.n_reservoirs)
-        _leakance_R       = self.cfg['reservoirs'].get('leakance_R__days',
-                                                    [None]  * self.n_reservoirs)
-        _H_threshold      = self.cfg['reservoirs'].get('H_threshold__mm',
-                                                    [0.0]   * self.n_reservoirs)
-        _mp_threshold     = self.cfg['reservoirs'].get('multipath_thresholds__mm',
-                                                    [None]  * self.n_reservoirs)
-        _mp_timescale     = self.cfg['reservoirs'].get('multipath_timescales__days',
-                                                    [None]  * self.n_reservoirs)
-        _basin_reservoirs = [
-            Reservoir(
-                recession_coeff = self.cfg['reservoirs']['recession_coefficients'][i],
-                f_to_discharge = self.cfg['reservoirs']['exfiltration_fractions'][i],
-                Hmax           = self.cfg['reservoirs']['maximum_effective_depths__mm'][i],
-                pdm_H0         = _pdm_H0[i],
-                H0             = self.cfg['initial_conditions'][
-                    'water_reservoir_effective_depths__mm'][i],
-                f_tile         = _f_tile[i],
-                tau_tile       = _tau_tile[i],
-                junction_type  = _junction_types[i],
-                leakance_R     = _leakance_R[i],
-                H_threshold    = _H_threshold[i] if _H_threshold[i] is not None else 0.0,
-                multipath_threshold = _mp_threshold[i],
-                multipath_timescale = _mp_timescale[i],
-            )
-            for i in range(self.n_reservoirs)]
-        # The legacy single-cascade configuration is one sub-catchment covering
-        # the whole basin (area_fraction = 1.0); self.reservoirs (a property)
-        # then exposes the same flat cascade as before. Multi-sub-catchment
-        # YAML parsing is added in a following commit.
-        self.sub_catchments = [SubCatchment('basin', 1.0, _basin_reservoirs)]
-        for i, b_exp in enumerate(_recession_exp):
-            self.reservoirs[i].recession_exponent = float(b_exp)
+        # Build the sub-catchment structure. A config may either give a single
+        # basin-wide reservoir cascade (legacy: top-level "reservoirs" +
+        # "initial_conditions" blocks) or partition the basin into parallel
+        # "sub_catchments", each with its own cascade. The legacy form is
+        # promoted to one sub-catchment of area_fraction 1.0, which reproduces
+        # the original behaviour exactly (self.reservoirs then exposes the same
+        # flat cascade as before).
+        if 'sub_catchments' in self.cfg:
+            self.sub_catchments = self._build_sub_catchments(
+                self.cfg['sub_catchments'])
+        else:
+            _basin_reservoirs = self._build_reservoir_cascade(
+                self.cfg['reservoirs'],
+                self.cfg['initial_conditions'][
+                    'water_reservoir_effective_depths__mm'])
+            self.sub_catchments = [
+                SubCatchment('basin', 1.0, _basin_reservoirs)]
+        # Total reservoir count across all sub-catchments (informational;
+        # equals the legacy single-cascade length when there is one sub-catchment).
+        self.n_reservoirs = len(self.reservoirs)
 
         # Check if bottom reservoir discharges all to river: conserve mass.
         # But allow through with a warning in case the user wants a
