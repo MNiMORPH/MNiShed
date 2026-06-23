@@ -2090,7 +2090,7 @@ class Buckets(object):
         NSE_num = np.sum((q_model[_realvalue] - q_data[_realvalue])**2)
         NSE_denom = np.sum((q_data[_realvalue] -
                             np.mean(q_data[_realvalue]))**2)
-        if np.sum(~_realvalue):
+        if verbose and np.sum(~_realvalue):
             print("Excluded", np.sum(~_realvalue), "no-data points from NSE calculation")
 
         self.NSE = 1 - NSE_num / NSE_denom
