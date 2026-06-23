@@ -1,7 +1,7 @@
 cff-version: 1.2.0
 message: "If you use this software, please cite it as below."
 type: software
-title: "MNiShed: Miniature watershed hydrological model"
+title: "MNiShed: Watershed hydrological model"
 abstract: >-
   MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes
   precipitation through an optional snowpack stage and then through a cascade of

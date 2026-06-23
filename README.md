@@ -63,7 +63,7 @@ See the [Quick Start guide](https://mnished.readthedocs.io/en/latest/quickstart.
 
 If you use MNiShed, please cite it using the metadata in [CITATION.cff](CITATION.cff) or via the Zenodo record:
 
-> Wickert, A. D. (2026). MNiShed: Miniature watershed hydrological model. https://doi.org/10.5281/zenodo.6787390
+> Wickert, A. D. (2026). MNiShed: Watershed hydrological model. https://doi.org/10.5281/zenodo.6787390
 
 ## Contact
 

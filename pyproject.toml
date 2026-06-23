@@ -19,7 +19,7 @@ requires-python = ">=3.9"
 authors = [
   { name="Andrew D. Wickert", email="awickert@umn.edu" },
 ]
-description = "Miniature lumped-parameter watershed hydrological model"
+description = "Lumped-parameter watershed hydrological model"
 readme = "README.md"
 license = "GPL-3.0-or-later"
 license-files = ["LICEN[CS]E*"]
