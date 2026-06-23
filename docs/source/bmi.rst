@@ -82,16 +82,17 @@ Online coupled
             "atmosphere_water__liquid_equivalent_precipitation_rate",
             np.array([p_from_upstream])
         )
-        bmi.set_value("atmosphere__temperature", np.array([t_from_upstream]))
+        bmi.set_value("atmosphere_bottom_air__temperature",
+                      np.array([t_from_upstream]))
         bmi.update()
 
         # Pass volumetric discharge [m³ s⁻¹] to a downstream channel or
         # sediment model.  Specific discharge [mm d⁻¹] is also available
         # via "land_surface_water__runoff_volume_flux".
         q_m3s = np.empty(1, dtype=np.float64)
-        bmi.get_value("channel_exit_water__volume_flow_rate", q_m3s)
-        downstream_model.set_value("channel_exit_water__volume_flow_rate",
-                                   q_m3s)
+        bmi.get_value("channel_exit_water_x-section__volume_flow_rate", q_m3s)
+        downstream_model.set_value(
+            "channel_exit_water_x-section__volume_flow_rate", q_m3s)
 
     bmi.finalize()
 
@@ -133,18 +134,36 @@ an absent column raises :exc:`KeyError`.
    * - ``atmosphere_water__liquid_equivalent_precipitation_rate``
      - mm d⁻¹
      - ``Precipitation [mm/day]``
-   * - ``atmosphere__temperature``
+   * - ``atmosphere_bottom_air__temperature``
      - °C
      - ``Mean Temperature [C]``
-   * - ``atmosphere__minimum_temperature``
+   * - ``atmosphere_bottom_air__time_min_of_temperature``
      - °C
      - ``Minimum Temperature [C]``
-   * - ``atmosphere__maximum_temperature``
+   * - ``atmosphere_bottom_air__time_max_of_temperature``
      - °C
      - ``Maximum Temperature [C]``
-   * - ``land_surface_water__potential_evapotranspiration_volume_flux``
+   * - ``land_surface_water__uncorrected_evapotranspiration_volume_flux``
      - mm d⁻¹
-     - ``Evapotranspiration [mm/day]``
+     - ``Evapotranspiration [mm/day]`` (ET forcing *before* water-balance
+       correction; see note below)
+
+.. note::
+
+   **Uncorrected vs. corrected ET.** The *input*
+   ``…__uncorrected_evapotranspiration_volume_flux`` is the ET forcing as
+   supplied (Thornthwaite–Chang, or a user series in ``datafile`` mode),
+   *before* water-balance correction.  The *output*
+   ``…__evapotranspiration_volume_flux`` (below) is that forcing *after* a
+   bulk multiplier — one constant, or one per water year — closes
+   P − Q − ET over the record: the post-correction ET *target*, which equals
+   the ET actually removed except under ``et_reservoir_draw`` /
+   ``et_water_stress``, where storage availability reduces it further.  The
+   multiplier is a coarse stand-in for moisture limitation, not a physical
+   potential-to-actual conversion; input and output coincide only when
+   ``enforce_water_balance='none'``.  ``uncorrected`` is an MNiShed-specific
+   name (CSDMS has no pre-/post-correction modifier), shaped like a standard
+   name as are the tile-drain, multipath-drain, and frozen-ground quantities.
 
 Output variables
 ~~~~~~~~~~~~~~~~
@@ -163,7 +182,7 @@ These variables are updated by each call to
    * - ``land_surface_water__runoff_volume_flux``
      - mm d⁻¹
      - Modelled specific discharge (area-normalised)
-   * - ``channel_exit_water__volume_flow_rate``
+   * - ``channel_exit_water_x-section__volume_flow_rate``
      - m³ s⁻¹
      - Volumetric discharge (specific discharge × catchment area)
    * - ``snowpack__liquid_equivalent_depth``

@@ -34,15 +34,15 @@ from .mnished import Buckets
 
 _INPUT_VAR_NAMES = (
     "atmosphere_water__liquid_equivalent_precipitation_rate",
-    "atmosphere__temperature",
-    "atmosphere__minimum_temperature",
-    "atmosphere__maximum_temperature",
-    "land_surface_water__potential_evapotranspiration_volume_flux",
+    "atmosphere_bottom_air__temperature",
+    "atmosphere_bottom_air__time_min_of_temperature",
+    "atmosphere_bottom_air__time_max_of_temperature",
+    "land_surface_water__uncorrected_evapotranspiration_volume_flux",
 )
 
 _OUTPUT_VAR_NAMES = (
     "land_surface_water__runoff_volume_flux",
-    "channel_exit_water__volume_flow_rate",
+    "channel_exit_water_x-section__volume_flow_rate",
     "snowpack__liquid_equivalent_depth",
     "subsurface_water__depth",
     "land_surface_water__evapotranspiration_volume_flux",
@@ -72,12 +72,12 @@ _ALL_VAR_NAMES = frozenset(_INPUT_VAR_NAMES + _OUTPUT_VAR_NAMES)
 
 _VAR_UNITS = {
     "atmosphere_water__liquid_equivalent_precipitation_rate": "mm d-1",
-    "atmosphere__temperature":                               "degC",
-    "atmosphere__minimum_temperature":                       "degC",
-    "atmosphere__maximum_temperature":                       "degC",
-    "land_surface_water__potential_evapotranspiration_volume_flux": "mm d-1",
+    "atmosphere_bottom_air__temperature":                    "degC",
+    "atmosphere_bottom_air__time_min_of_temperature":        "degC",
+    "atmosphere_bottom_air__time_max_of_temperature":        "degC",
+    "land_surface_water__uncorrected_evapotranspiration_volume_flux": "mm d-1",
     "land_surface_water__runoff_volume_flux":                "mm d-1",
-    "channel_exit_water__volume_flow_rate":                  "m3 s-1",
+    "channel_exit_water_x-section__volume_flow_rate":        "m3 s-1",
     "snowpack__liquid_equivalent_depth":                     "mm",
     "subsurface_water__depth":                               "mm",
     "land_surface_water__evapotranspiration_volume_flux":    "mm d-1",
@@ -101,10 +101,10 @@ _VAR_UNITS = {
 # MNiShed DataFrame column name for each input variable
 _INPUT_COLUMNS = {
     "atmosphere_water__liquid_equivalent_precipitation_rate": "Precipitation [mm/day]",
-    "atmosphere__temperature":        "Mean Temperature [C]",
-    "atmosphere__minimum_temperature": "Minimum Temperature [C]",
-    "atmosphere__maximum_temperature": "Maximum Temperature [C]",
-    "land_surface_water__potential_evapotranspiration_volume_flux":
+    "atmosphere_bottom_air__temperature":             "Mean Temperature [C]",
+    "atmosphere_bottom_air__time_min_of_temperature": "Minimum Temperature [C]",
+    "atmosphere_bottom_air__time_max_of_temperature": "Maximum Temperature [C]",
+    "land_surface_water__uncorrected_evapotranspiration_volume_flux":
         "Evapotranspiration [mm/day]",
 }
 
@@ -165,7 +165,7 @@ class BmiMNiShed(Bmi):
             "atmosphere_water__liquid_equivalent_precipitation_rate",
             np.array([5.2])
         )
-        bmi.set_value("atmosphere__temperature", np.array([3.1]))
+        bmi.set_value("atmosphere_bottom_air__temperature", np.array([3.1]))
         bmi.update()
         q = np.empty(1, dtype=np.float64)
         bmi.get_value("land_surface_water__runoff_volume_flux", q)
@@ -212,6 +212,20 @@ class BmiMNiShed(Bmi):
     declared.  Temperature and ET inputs will raise :exc:`KeyError` from
     :meth:`set_value` if the corresponding column is absent from the
     loaded time series.
+
+    **Evapotranspiration, input vs. output**: the input
+    ``…__uncorrected_evapotranspiration_volume_flux`` is the ET forcing as
+    supplied (Thornthwaite–Chang, or a user series in ``datafile`` mode),
+    *before* water-balance correction.  The output
+    ``…__evapotranspiration_volume_flux`` is that forcing *after* a bulk
+    multiplier — one constant, or one per water year — closes P − Q − ET
+    over the record: the post-correction ET *target*, which equals the ET
+    actually removed except under ``et_reservoir_draw`` / ``et_water_stress``,
+    where storage availability reduces it further.  The multiplier is a
+    coarse stand-in for moisture limitation, not a physical
+    potential-to-actual conversion; input and output coincide only when
+    ``enforce_water_balance='none'``.  ``uncorrected`` is an MNiShed-specific
+    name (CSDMS has no pre-/post-correction modifier).
     """
 
     def __init__(self) -> None:
@@ -439,7 +453,7 @@ class BmiMNiShed(Bmi):
             val = m.hydrodata.at[idx, "Specific Discharge (modeled) [mm/day]"]
             return float(val) if not pd.isna(val) else np.nan
 
-        if name == "channel_exit_water__volume_flow_rate":
+        if name == "channel_exit_water_x-section__volume_flow_rate":
             if idx < first:
                 return np.nan
             val = m.hydrodata.at[idx, "Specific Discharge (modeled) [mm/day]"]

@@ -57,8 +57,14 @@ and migration guide.
   (`KGE_logKGE`, `KGE_logKGE_logFDC`, `KGE_logKGE_logFDC_BFI`,
   `logKGE_logFDC_BFI`), and `kge_logfdc` on `CalibResult`.
 - **CSDMS BMI wrapper** (`BmiMNiShed`): 10-reservoir cap (up from 3),
-  `channel_exit_water__volume_flow_rate` output, and flux-partition,
-  frozen-ground-index, and actual-ET outputs.
+  `channel_exit_water_x-section__volume_flow_rate` output, and
+  flux-partition, frozen-ground-index, and actual-ET outputs. Input/output
+  names follow current CSDMS Standard Names conventions
+  (`atmosphere_bottom_air__temperature`, `…__time_min_of_temperature` /
+  `…__time_max_of_temperature`); the ET forcing input is
+  `land_surface_water__uncorrected_evapotranspiration_volume_flux` (a
+  model-specific name for the as-supplied ET, before water-balance
+  correction), distinct from the corrected ET output.
 - **Calibration API:** AIC free-parameter counting for the new junction,
   multipath, and recession-exponent parameters via `*_calibrated` arguments;
   single full-record ET multiplier in decade mode.

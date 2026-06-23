@@ -29,9 +29,9 @@ EXAMPLE_DIR = os.path.abspath(
 EXAMPLE_CONFIG = "cannon_cfg.yml"
 
 P_NAME = "atmosphere_water__liquid_equivalent_precipitation_rate"
-T_NAME = "atmosphere__temperature"
+T_NAME = "atmosphere_bottom_air__temperature"
 Q_NAME = "land_surface_water__runoff_volume_flux"
-Q_VOL_NAME = "channel_exit_water__volume_flow_rate"
+Q_VOL_NAME = "channel_exit_water_x-section__volume_flow_rate"
 SWE_NAME = "snowpack__liquid_equivalent_depth"
 STOR_NAME = "subsurface_water__depth"
 RES0_NAME = "subsurface_water_reservoir_0__depth"
