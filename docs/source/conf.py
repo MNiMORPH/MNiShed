@@ -15,8 +15,12 @@ extensions = [
     'sphinx.ext.intersphinx',
     'sphinx.ext.viewcode',
     'sphinx.ext.mathjax',
+    'sphinx.ext.graphviz',
     'sphinx_rtd_theme',
 ]
+
+# Render Graphviz diagrams (e.g. the ET-pathway figure) as scalable SVG.
+graphviz_output_format = 'svg'
 
 templates_path = ['_templates']
 exclude_patterns = ['_build', 'Thumbs.db', '.DS_Store']

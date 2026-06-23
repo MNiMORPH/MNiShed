@@ -715,6 +715,57 @@ AIC comparison (see :doc:`calibration`).
 Evapotranspiration
 ~~~~~~~~~~~~~~~~~~
 
+MNiShed handles ET in three stages: an **estimate** of demand, a
+**water-balance correction** that turns it into the ET the model targets,
+and an **application** pathway that removes it from storage. The figure
+traces these stages; the methods and modes are detailed below.
+
+.. graphviz::
+   :align: center
+   :caption: Evapotranspiration in MNiShed — estimate, water-balance
+             correction, and the three application pathways.
+
+   digraph et_pathways {
+       rankdir=TB;
+       node [shape=box, style="rounded,filled", fillcolor=white,
+             fontname="Helvetica", fontsize=10];
+       edge [fontname="Helvetica", fontsize=9];
+
+       temp [label="Temperature\n(Tmax, Tmin, photoperiod)"];
+       file [label="Datafile\n(externally known ET)"];
+
+       uncorr [label="Uncorrected ET\n'Evapotranspiration [mm/day]'\nBMI input",
+               fillcolor="#eaf2fb"];
+       corr   [label="Corrected ET (target)\n'ET for model [mm/day]'\nBMI output",
+               fillcolor="#eaf2fb"];
+
+       pd [label="default:\nsubtracted in P - E recharge"];
+       ps [label="et_water_stress:\nscaled by 1 - exp(-H/H0)"];
+       pr [label="et_reservoir_draw:\ndrawn post-cascade, capped at\nstorage / wilting point"];
+
+       actual [label="Actual ET removed from storage\n(= target by default;\n<= target under stress modes)",
+                fillcolor="#eef7ee"];
+
+       temp -> uncorr [label="Thornthwaite-Chang"];
+       file -> uncorr [label="as supplied"];
+       uncorr -> corr [label="× water-balance multiplier\n(water-year | global | none); × et_scale"];
+       corr -> pd;
+       corr -> ps;
+       corr -> pr;
+       pd -> actual;
+       ps -> actual;
+       pr -> actual;
+   }
+
+The uncorrected estimate is the input CSV column
+``Evapotranspiration [mm/day]`` (BMI input
+``…__uncorrected_evapotranspiration_volume_flux``); the corrected target is
+``ET for model [mm/day]`` (BMI output
+``…__evapotranspiration_volume_flux``). The two coincide only when
+``enforce_water_balance: 'none'``, and the ET *actually removed* equals the
+target except under ``et_water_stress`` / ``et_reservoir_draw``, where
+storage availability reduces it.
+
 Two methods are supported:
 
 **Method 1: From Data**
