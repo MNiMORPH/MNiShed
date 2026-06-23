@@ -891,6 +891,72 @@ class Snowpack(object):
         return excess_dd
 
 
+class SubCatchment(object):
+    """
+    A parallel hydraulic compartment of the basin with its own reservoir
+    cascade and per-compartment state.
+
+    Sub-catchments represent spatially distinct zones (e.g. till uplands vs.
+    lake-clay lowlands) that drain to the same river channel *in parallel*
+    rather than in a vertical cascade. Each sub-catchment is internally an
+    ordinary serial reservoir cascade; basin discharge is the area-weighted
+    mean of the sub-catchments' per-unit-area discharges. A model with a
+    single sub-catchment of ``area_fraction = 1.0`` reproduces the original
+    (non-partitioned) MNiShed behaviour exactly.
+
+    State that evolves independently per zone — snowpack, frozen-ground index,
+    and the carried recharge deficit — lives on the sub-catchment so that
+    per-sub-catchment forcing can be added later without changing the public
+    API. In this version the forcing is basin-shared, so these states evolve
+    identically across sub-catchments.
+
+    Parameters
+    ----------
+    name : str
+        Label for the sub-catchment. Must be unique within a basin.
+    area_fraction : float
+        Fraction of the basin area drained by this sub-catchment, in [0, 1].
+        The fractions across all sub-catchments must sum to 1.
+    reservoirs : list of Reservoir
+        The vertical reservoir cascade for this sub-catchment, ordered
+        shallowest (index 0) to deepest. Must contain at least one reservoir.
+    snowpack : Snowpack or None, optional
+        Snowpack state for this sub-catchment. None when the basin has no
+        snowpack module enabled. Default None.
+    fgi_init : float, optional
+        Initial frozen-ground index [°C·day] for this sub-catchment.
+        Default 0.0.
+    H_deficit_carry_init : float, optional
+        Initial recharge deficit [mm] carried into the first time step.
+        Default 0.0.
+    forcing : dict or None, optional
+        Per-sub-catchment forcing specification. Reserved for a future
+        release; supplying it raises NotImplementedError, because the current
+        implementation shares basin-level forcing across all sub-catchments.
+        Default None.
+    """
+
+    def __init__(self, name, area_fraction, reservoirs, *,
+                 snowpack=None, fgi_init=0.0, H_deficit_carry_init=0.0,
+                 forcing=None):
+        if forcing is not None:
+            raise NotImplementedError(
+                "Per-sub-catchment forcing is not yet supported; basin-level "
+                "forcing is shared across all sub-catchments. Remove the "
+                f"'forcing' block from sub-catchment '{name}'.")
+        if len(reservoirs) < 1:
+            raise ValueError(
+                f"Sub-catchment '{name}' has no reservoirs; each "
+                "sub-catchment must have at least one reservoir.")
+        self.name             = name
+        self.area_fraction    = area_fraction
+        self.reservoirs       = reservoirs
+        self.snowpack         = snowpack
+        self.fgi              = fgi_init
+        self.H_deficit_carry  = H_deficit_carry_init
+        self.forcing          = forcing
+
+
 class Buckets(object):
     """
     Incorporates a list of reservoirs into a linear hierarchy that sends water
