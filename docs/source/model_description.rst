@@ -4,9 +4,16 @@ Model Description
 Theory & Mathematical Formulation
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-MNiShed is a lumped, daily-timestep conceptual hydrological model. Water 
-moves through three sequential processes each day: optional snowpack accumulation/melt,
-routing through cascading reservoirs (linear or nonlinear power-law), and evapotranspiration.
+MNiShed is a lumped, daily-timestep conceptual hydrological model. A basin is
+represented as one or more **parallel sub-catchments** — spatially distinct
+hydraulic zones that drain to the same channel — each routing water through its
+own cascade of reservoirs. The common case is a single sub-catchment spanning
+the whole basin; several sub-catchments resolve zones with genuinely different
+storage–discharge behaviour. Within each sub-catchment, water moves through
+three sequential processes each day: optional snowpack accumulation/melt,
+routing through cascading reservoirs (linear or nonlinear power-law), and
+evapotranspiration. Basin streamflow is the area-weighted mean of the
+sub-catchments.
 
 All fluxes are expressed as depths over the drainage basin (mm/day).
 Mass is conserved to within numerical precision.
@@ -27,6 +34,49 @@ where:
 * :math:`E` = evapotranspiration (mm/day)
 * :math:`\Delta S` = change in storage (mm/day)
 * :math:`Q` = streamflow (mm/day)
+
+For a partitioned basin this balance holds within each sub-catchment; the basin
+totals :math:`Q` and :math:`\Delta S` are the area-weighted sums over
+sub-catchments (see :ref:`parallel-sub-catchments`).
+
+.. _parallel-sub-catchments:
+
+Spatial Structure: Sub-catchments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A basin is partitioned into :math:`K` **parallel sub-catchments** — spatially
+distinct hydraulic zones that drain to the same channel in parallel rather than
+in a vertical stack. The default is a single sub-catchment (:math:`K = 1`)
+spanning the whole basin, which is exactly the reservoir cascade described
+below. Several sub-catchments are used when a basin contains zones with
+genuinely different storage–discharge behaviour — for example till uplands with
+tile drainage alongside lake-clay lowlands — where a single cascade would
+conflate a parallel structure into a serial one and could only partially
+represent it.
+
+Each sub-catchment :math:`k` is internally an ordinary vertical reservoir
+cascade, with its own recession, junction, multipath, and tile-drain
+parameters, and carries its own snowpack, frozen-ground, and carried-deficit
+state. It occupies a basin-area fraction :math:`a_k`, with
+:math:`\sum_{k=1}^{K} a_k = 1`. Sub-catchments are advanced independently each
+day and produce per-unit-area discharge :math:`Q_k`; basin streamflow is their
+area-weighted mean:
+
+.. math::
+
+    Q_{\text{basin}} = \sum_{k=1}^{K} a_k \, Q_k
+
+Storage is area-weighted the same way (:math:`\sum_k a_k H_k`), so the basin
+water balance is exact for any number of sub-catchments. With :math:`K = 1` and
+:math:`a = 1` every aggregation is the identity, recovering the single-cascade
+model exactly; existing single-cascade configurations are treated as precisely
+that and need no changes.
+
+All sub-catchments currently share the basin-level forcing (precipitation, ET,
+temperature); per-sub-catchment forcing is a planned extension. The process
+descriptions that follow are written for a single sub-catchment — when a basin
+defines only one, "the sub-catchment" and "the basin" coincide. See
+:ref:`sub-catchments-config` to configure a partitioned basin.
 
 Optional Process Modules
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -300,8 +350,9 @@ intended physical interpretation.
 Linear Reservoir Cascade
 ~~~~~~~~~~~~~~~~~~~~~~~~
 
-Water drains through a stack of reservoirs (top = shallowest, bottom = deepest).
-Each reservoir first receives its recharge input, then drains by exponential decay:
+Within a sub-catchment, water drains through a stack of reservoirs (top =
+shallowest, bottom = deepest). Each reservoir first receives its recharge
+input, then drains by exponential decay:
 
 .. math::
 
@@ -345,38 +396,6 @@ where:
   longer timescales — interflow (days), soil moisture (months),
   groundwater (years) — but that mapping is the user's choice, analogous
   to the multi-component runoff structure of HBV (Bergström 1976).
-
-.. _parallel-sub-catchments:
-
-Parallel Sub-catchments (Optional)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-The cascade above is *vertical*: water drained from one reservoir recharges
-the one beneath it. Some basins, however, comprise spatially distinct
-hydraulic zones that drain to the same channel **in parallel** rather than in
-a vertical stack — for example till uplands with tile drainage alongside
-lake-clay lowlands, each with its own recession behaviour. Routing these
-through a single vertical cascade conflates a parallel structure into a serial
-one and can only partially represent it.
-
-A basin may instead be partitioned into :math:`K` **parallel sub-catchments**.
-Each sub-catchment :math:`k` is internally an ordinary vertical cascade (with
-its own recession, junction, multipath, and tile parameters) and carries its
-own snowpack and frozen-ground state. Each has a basin-area fraction
-:math:`a_k`, with :math:`\sum_k a_k = 1`. Sub-catchments are advanced
-independently and produce per-unit-area discharge :math:`Q_k`; basin discharge
-is their area-weighted mean:
-
-.. math::
-
-    Q_{\text{basin}} = \sum_{k=1}^{K} a_k \, Q_k
-
-Storage is likewise area-weighted (:math:`\sum_k a_k H_k`), so the basin water
-balance is exact. A single sub-catchment with :math:`a = 1` recovers the plain
-cascade exactly, and existing single-cascade configurations are treated as
-exactly that. In this release all sub-catchments share the basin-level forcing
-(precipitation, ET, temperature); per-sub-catchment forcing is a planned
-extension. See :ref:`sub-catchments-config` for how to configure them.
 
 .. _reservoir-junctions:
 

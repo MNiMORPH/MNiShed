@@ -22,8 +22,9 @@ Configuration File Structure
         # Simulation settings
     
     reservoirs:
-        # Reservoir cascade configuration
-    
+        # Reservoir cascade for the whole basin (a single hydraulic zone).
+        # Replace with `sub_catchments:` to model parallel zones.
+
     snowmelt:
         # Required section; snowpack processes are only active if
         # Mean Temperature [C] is present in the input CSV
@@ -75,6 +76,10 @@ Example:
             - 150    # Top (soil) reservoir starts at 150 mm
             - 400    # Bottom (groundwater) starts at 400 mm
         snowpack__mm_SWE: 50  # 50 mm SWE initially
+
+This top-level block applies to a single-zone basin. When the basin is split
+into parallel zones, each sub-catchment carries its own ``initial_conditions``
+block instead (see :ref:`sub-catchments-config`).
 
 The ``catchment`` section
 ~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -197,9 +202,10 @@ Example:
 The ``reservoirs`` section
 ~~~~~~~~~~~~~~~~~~~~~~~~~~
 
-This section defines the cascade of reservoirs (1 or more); each may be
-linear or nonlinear (power-law, via ``recession_exponents``).
-All lists must have the same length.
+This section defines the cascade of reservoirs (1 or more) for a basin treated
+as a single hydraulic zone; each may be linear or nonlinear (power-law, via
+``recession_exponents``). All lists must have the same length. To split the
+basin into parallel zones, use :ref:`sub-catchments-config` instead.
 
 .. list-table::
    :widths: 35 15 40
@@ -313,6 +319,65 @@ No reservoir is fixed to a particular process; physical meaning is set
 by the parameters. Successive reservoirs naturally span progressively
 longer storage timescales — from interflow (days) to soil moisture
 (months) to groundwater (years) — but that mapping is the user's choice.
+
+A single ``reservoirs`` block describes one cascade for the whole basin. To
+split the basin into parallel hydraulic zones, use the ``sub_catchments``
+section below instead.
+
+.. _sub-catchments-config:
+
+The ``sub_catchments`` section
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+Use ``sub_catchments`` in place of the top-level ``reservoirs`` block to
+represent a basin as several **parallel sub-catchments** — spatially distinct
+hydraulic zones (for example till uplands versus lake-clay lowlands) that drain
+to the same channel in parallel rather than through one vertical cascade. Each
+entry is one zone and mirrors the single-cascade form: a unique ``name``, an
+``area_fraction``, its own ``reservoirs`` block (same keys as above), and an
+optional ``initial_conditions`` block for that zone's starting reservoir depths
+and SWE. Basin discharge is the area-weighted mean of the sub-catchments; see
+:ref:`parallel-sub-catchments` for the concept.
+
+.. code-block:: yaml
+
+    sub_catchments:
+      - name: till_uplands
+        area_fraction: 0.55
+        reservoirs:
+          recession_coefficients:        [50, 500]   # a two-reservoir cascade
+          exfiltration_fractions:        [0.6, 1.0]
+          maximum_effective_depths__mm:  [.inf, .inf]
+          multipath_thresholds__mm:      [100.0, null]
+          multipath_timescales__days:    [10.0, null]
+        initial_conditions:                            # optional; defaults to 0
+          water_reservoir_effective_depths__mm: [5, 300]
+          snowpack__mm_SWE: 0
+      - name: clay_lowlands
+        area_fraction: 0.45
+        reservoirs:
+          recession_coefficients:        [1500]       # a single reservoir
+          exfiltration_fractions:        [1.0]
+          maximum_effective_depths__mm:  [.inf]
+
+Rules:
+
+* ``area_fraction`` values must sum to 1 (within ``1e-6``).
+* ``name`` is required and must be unique.
+* Each sub-catchment must have at least one reservoir.
+* The number of reservoirs may differ between sub-catchments.
+* A ``forcing`` block per sub-catchment is reserved for a future release (for
+  zone-specific precipitation/ET/temperature) and currently raises
+  ``NotImplementedError``; forcing is shared across sub-catchments for now.
+
+A single ``reservoirs`` block is exactly equivalent to one ``sub_catchments``
+entry with ``area_fraction: 1.0``, so the two forms are interchangeable for a
+one-zone basin and existing configurations need no changes.
+
+To calibrate a partitioned basin, pass a ``sub_catchments`` argument to
+:func:`~mnished.calibration.run_and_score` (one dict per sub-catchment, in
+config order) to override ``area_fraction`` and the per-reservoir parameters by
+position; snow and ET parameters remain basin-level.
 
 The ``snowmelt`` section
 ~~~~~~~~~~~~~~~~~~~~~~~~
@@ -517,66 +582,6 @@ may also be set in the ``general`` block).
        with standard deviation ``wp_soil_sigma``, and ET extraction is
        reduced proportionally. Default ``0.0`` (hard threshold). Requires
        ``wp_soil > 0``.
-
-.. _sub-catchments-config:
-
-Parallel Sub-catchments (Optional)
-~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
-
-By default a configuration describes a single vertical reservoir cascade for
-the whole basin. A basin can instead be partitioned into **parallel
-sub-catchments** — spatially distinct hydraulic zones (for example till
-uplands versus lake-clay lowlands) that drain to the same channel in parallel
-rather than in a vertical cascade. Each sub-catchment has its own reservoir
-cascade, snowpack, and frozen-ground state; basin discharge is the
-area-weighted mean of the sub-catchments. See
-:ref:`parallel-sub-catchments` in the model description for the concept.
-
-Replace the top-level ``reservoirs`` (and the reservoir part of
-``initial_conditions``) with a ``sub_catchments`` list. Each entry mirrors the
-single-cascade form: a unique ``name``, an ``area_fraction``, its own
-``reservoirs`` block (same keys as above), and an optional
-``initial_conditions`` block for that zone's starting reservoir depths and SWE.
-
-.. code-block:: yaml
-
-    sub_catchments:
-      - name: till_uplands
-        area_fraction: 0.55
-        reservoirs:
-          recession_coefficients:        [50, 500]   # a two-reservoir cascade
-          exfiltration_fractions:        [0.6, 1.0]
-          maximum_effective_depths__mm:  [.inf, .inf]
-          multipath_thresholds__mm:      [100.0, null]
-          multipath_timescales__days:    [10.0, null]
-        initial_conditions:                            # optional; defaults to 0
-          water_reservoir_effective_depths__mm: [5, 300]
-          snowpack__mm_SWE: 0
-      - name: clay_lowlands
-        area_fraction: 0.45
-        reservoirs:
-          recession_coefficients:        [1500]       # a single reservoir
-          exfiltration_fractions:        [1.0]
-          maximum_effective_depths__mm:  [.inf]
-
-Rules:
-
-* ``area_fraction`` values must sum to 1 (within ``1e-6``).
-* ``name`` is required and must be unique.
-* Each sub-catchment must have at least one reservoir.
-* The number of reservoirs may differ between sub-catchments.
-* A ``forcing`` block per sub-catchment is reserved for a future release (for
-  zone-specific precipitation/ET/temperature) and currently raises
-  ``NotImplementedError``; forcing is shared across sub-catchments for now.
-
-The legacy single ``reservoirs`` block is equivalent to one sub-catchment with
-``area_fraction: 1.0`` and reproduces the original behaviour exactly, so
-existing configurations need no changes.
-
-To calibrate a partitioned basin, pass a ``sub_catchments`` argument to
-:func:`~mnished.calibration.run_and_score` (one dict per sub-catchment, in
-config order) to override ``area_fraction`` and the per-reservoir parameters by
-position; snow and ET parameters remain basin-level.
 
 Complete Example
 ~~~~~~~~~~~~~~~~
