@@ -998,9 +998,9 @@ class Buckets(object):
 
         # Frozen ground index (Molnau & Bissell 1983).  Disabled by default
         # (threshold = inf); overridden by snowmelt.fdd_threshold in YAML or
-        # by run_and_score(fdd_threshold=).
+        # by run_and_score(fdd_threshold=).  The FGI state itself lives on each
+        # sub-catchment (SubCatchment.fgi), created in initialize().
         self.fdd_threshold = np.inf  # [°C·day]
-        self._fgi          = 0.0    # current frozen ground index [°C·day]
 
     @property
     def reservoirs(self):
@@ -1032,6 +1032,52 @@ class Buckets(object):
     def n_sub_catchments(self):
         """Number of parallel sub-catchments (>= 1)."""
         return len(self.sub_catchments)
+
+    @property
+    def snowpack(self):
+        """
+        Snowpack of the first sub-catchment (the whole basin when there is a
+        single sub-catchment). For per-sub-catchment snowpacks, iterate
+        ``sub_catchments``. Read-only; snowpacks are created in initialize().
+        """
+        return self.sub_catchments[0].snowpack
+
+    @property
+    def _fgi(self):
+        """
+        Frozen-ground index of the first sub-catchment [°C·day]. For
+        per-sub-catchment FGI, see ``sub_catchments``. The state is advanced
+        per sub-catchment by _update_fgi(); the setter broadcasts a scalar to
+        every sub-catchment (used to restore or reset single-sub-catchment
+        calibration state).
+        """
+        return self.sub_catchments[0].fgi
+
+    @_fgi.setter
+    def _fgi(self, value):
+        for sc in self.sub_catchments:
+            sc.fgi = value
+
+    @property
+    def H_deficit_carry(self):
+        """
+        Basin recharge deficit carried into the next time step [mm], as the
+        area-weighted sum over sub-catchments (so the basin mass balance is
+        exact at any number of sub-catchments). The per-sub-catchment deficits
+        are stored on each SubCatchment.
+
+        The setter broadcasts a scalar to every sub-catchment; because the area
+        fractions sum to 1, the area-weighted getter then returns that same
+        value, so a set/get round-trips. Used to restore or reset state in
+        single-sub-catchment calibration.
+        """
+        return sum(sc.area_fraction * sc.H_deficit_carry
+                   for sc in self.sub_catchments)
+
+    @H_deficit_carry.setter
+    def H_deficit_carry(self, value):
+        for sc in self.sub_catchments:
+            sc.H_deficit_carry = value
 
     def _compute_Chang_I(self, T_monthly_normals):
         """
@@ -1358,12 +1404,11 @@ class Buckets(object):
                             'Minimum Temperature [C]' in self.hydrodata.columns and
                             'Maximum Temperature [C]' in self.hydrodata.columns)
         if self.has_snowpack:
-            # Instantiate snowpack
-            self.snowpack = Snowpack(self.melt_factor)  # allow changes to melt factor later
-            # Mirror onto the sub-catchment(s); the time loops still read the
-            # basin-level self.snowpack until per-sub-catchment state is wired in.
+            # Each sub-catchment gets its own snowpack so that per-sub-catchment
+            # forcing can drive them independently later. With basin-shared
+            # forcing they evolve identically. self.snowpack aliases the first.
             for sc in self.sub_catchments:
-                sc.snowpack = self.snowpack
+                sc.snowpack = Snowpack(self.melt_factor)
         elif 'Mean Temperature [C]' in self.hydrodata.columns and not self.use_snowpack:
             pass  # snowpack deliberately disabled via modules config
         else:
@@ -1396,10 +1441,19 @@ class Buckets(object):
         self.direct_runoff_fraction = self.cfg['general'].get(
             'direct_runoff_fraction', 0.0)
 
-        # Initial conditions if resuming from prior run
+        # Initial conditions if resuming from prior run. Each sub-catchment
+        # takes its initial SWE from its own initial_conditions block; the
+        # legacy single-cascade config uses the top-level initial_conditions.
         if self.has_snowpack:
-            self.snowpack.Hwater = self.cfg['initial_conditions']['snowpack__mm_SWE']
-        # Reservoir H0 values are set in the list comprehension above.
+            if 'sub_catchments' in self.cfg:
+                for sc, sc_cfg in zip(self.sub_catchments,
+                                      self.cfg['sub_catchments']):
+                    sc.snowpack.Hwater = sc_cfg.get('initial_conditions', {}).get(
+                        'snowpack__mm_SWE', 0.0)
+            else:
+                self.sub_catchments[0].snowpack.Hwater = (
+                    self.cfg['initial_conditions']['snowpack__mm_SWE'])
+        # Reservoir H0 values are set during sub-catchment construction.
 
         # Enforce the daily timestep. MNiShed is a daily model by design:
         # degree-day snowmelt, Thornthwaite ET, and linear reservoir drainage
@@ -1435,8 +1489,11 @@ class Buckets(object):
         # Carry-over of any water deficit from the previous timestep that the
         # deepest reservoir could not satisfy (ET > P + all storage).  This is
         # the unpaid debt passed forward one step; distinct from
-        # Reservoir.H_deficit and Snowpack.H_deficit, which are per-timestep only.
-        self.H_deficit_carry = 0.
+        # Reservoir.H_deficit and Snowpack.H_deficit, which are per-timestep
+        # only. Stored per sub-catchment; self.H_deficit_carry reads the
+        # area-weighted sum.
+        for sc in self.sub_catchments:
+            sc.H_deficit_carry = 0.
 
         # Compute the water years based on the input month for
         # water-year rollover
@@ -1641,28 +1698,34 @@ class Buckets(object):
         # land-cover or climate sensitivity — at the cost of exact WB closure.
         self.hydrodata['ET for model [mm/day]'] = _et_mode * self.et_scale
 
-    def _et_stress_factor(self):
+    def _et_stress_factor(self, sub_catchment):
         """
         Water-availability multiplier applied to potential ET each time step.
 
         Returns 1 - exp(-H_shallow / H0), where H_shallow is the current water
-        depth in the shallowest reservoir and H0 is its PDM characteristic
-        storage depth (pdm_H0).  The multiplier is zero when the reservoir is
-        empty and approaches 1 as it fills, so actual ET = potential ET * factor.
+        depth in the sub-catchment's shallowest reservoir and H0 is its PDM
+        characteristic storage depth (pdm_H0).  The multiplier is zero when the
+        reservoir is empty and approaches 1 as it fills, so actual ET =
+        potential ET * factor.
 
         Returns 1.0 (no stress) when et_water_stress is disabled or when the
         shallow reservoir has no pdm_H0 set.
+
+        Parameters
+        ----------
+        sub_catchment : SubCatchment
+            The sub-catchment whose shallow reservoir governs the stress.
         """
         if not self.use_et_water_stress:
             return 1.0
-        H0 = self.reservoirs[0].pdm_H0
+        H0 = sub_catchment.reservoirs[0].pdm_H0
         if H0 is None:
             return 1.0
-        return 1.0 - np.exp(-max(self.reservoirs[0].Hwater, 0.0) / H0)
+        return 1.0 - np.exp(-max(sub_catchment.reservoirs[0].Hwater, 0.0) / H0)
 
-    def _draw_et_from_reservoirs(self, ET_pot):
+    def _draw_et_from_reservoirs(self, ET_pot, sub_catchment=None):
         """
-        Remove actual ET from reservoirs after cascade drainage.
+        Remove actual ET from a sub-catchment's reservoirs after drainage.
 
         ET_pot is partitioned between reservoir 0 (shallow) and reservoir 1
         (soil) by et_alpha.  Each draw is capped at available storage so
@@ -1677,6 +1740,9 @@ class Buckets(object):
         ET_pot : float
             Potential ET for this time step [mm/day], already scaled by
             et_scale or the global water-balance multiplier.
+        sub_catchment : SubCatchment, optional
+            The sub-catchment to draw from. Defaults to the first
+            sub-catchment (the whole basin in the single-sub-catchment case).
 
         Returns
         -------
@@ -1685,13 +1751,16 @@ class Buckets(object):
             a reservoir's Hmax.  Zero in the usual (ET removal) case; the
             caller adds it to the day's discharge.
         """
+        if sub_catchment is None:
+            sub_catchment = self.sub_catchments[0]
+        reservoirs = sub_catchment.reservoirs
         fractions = [self.et_alpha, 1.0 - self.et_alpha]
         excess = 0.0
         for i, frac in enumerate(fractions):
-            if i >= len(self.reservoirs):
+            if i >= len(reservoirs):
                 break
             demand = frac * ET_pot
-            H = self.reservoirs[i].Hwater
+            H = reservoirs[i].Hwater
             if i == 1 and self.wp_soil > 0.0:
                 # Soil reservoir: scale demand by fraction of catchment above WP.
                 if self.wp_soil_sigma > 0.0:
@@ -1705,20 +1774,28 @@ class Buckets(object):
                         continue
                     H = H - self.wp_soil   # only water above WP is available
             actual = min(demand, max(0.0, H))
-            self.reservoirs[i].Hwater -= actual
+            reservoirs[i].Hwater -= actual
             # Condensation (negative ET) that overtops the cap runs off.
-            if self.reservoirs[i].Hwater > self.reservoirs[i].Hmax:
-                excess += self.reservoirs[i].Hwater - self.reservoirs[i].Hmax
-                self.reservoirs[i].Hwater = self.reservoirs[i].Hmax
+            if reservoirs[i].Hwater > reservoirs[i].Hmax:
+                excess += reservoirs[i].Hwater - reservoirs[i].Hmax
+                reservoirs[i].Hwater = reservoirs[i].Hmax
         return excess
 
-    def _compute_snowpack(self, time_step):
+    def _compute_snowpack(self, time_step, sub_catchment):
         """
-        Update the snowpack for one timestep; return excess melt energy.
+        Update a sub-catchment's snowpack for one timestep; return excess melt.
 
         Sets temperature, applies net water input, then calls melt() with
         the raw precipitation so rain-on-snow sensible heat is included.
-        Updates self.H_deficit_carry from the snowpack before returning.
+        Updates the sub-catchment's H_deficit_carry from the snowpack before
+        returning.
+
+        Parameters
+        ----------
+        time_step : int
+            Current row index in self.hydrodata.
+        sub_catchment : SubCatchment
+            The sub-catchment whose snowpack is advanced.
 
         Returns
         -------
@@ -1726,23 +1803,24 @@ class Buckets(object):
             Leftover melt energy [°C·day] after SWE is fully depleted.
             Pass to _update_fgi() to credit toward frozen-soil thawing.
         """
+        snowpack = sub_catchment.snowpack
         T = self.hydrodata['Mean Temperature [C]'][time_step]
         P = self.hydrodata['Precipitation [mm/day]'][time_step]
-        self.snowpack.set_temperature(T)
+        snowpack.set_temperature(T)
         if self.use_et_reservoir_draw:
-            _sp_recharge = P + self.H_deficit_carry
+            _sp_recharge = P + sub_catchment.H_deficit_carry
         else:
             _sp_recharge = (P
                             - self.hydrodata['ET for model [mm/day]'][time_step]
-                            * self._et_stress_factor()
-                            + self.H_deficit_carry)
-        self.snowpack.recharge(_sp_recharge)
-        excess_dd = self.snowpack.melt(self.dt,
-                                       P=(P if self.use_rain_on_snow else 0.0))
-        self.H_deficit_carry = self.snowpack.H_deficit
+                            * self._et_stress_factor(sub_catchment)
+                            + sub_catchment.H_deficit_carry)
+        snowpack.recharge(_sp_recharge)
+        excess_dd = snowpack.melt(self.dt,
+                                  P=(P if self.use_rain_on_snow else 0.0))
+        sub_catchment.H_deficit_carry = snowpack.H_deficit
         return excess_dd
 
-    def _update_fgi(self, time_step, excess_dd=0.0):
+    def _update_fgi(self, time_step, sub_catchment, excess_dd=0.0):
         """
         Update the frozen ground index; flag top reservoir as frozen if needed.
 
@@ -1792,6 +1870,8 @@ class Buckets(object):
         ----------
         time_step : int
             Current row index in self.hydrodata.
+        sub_catchment : SubCatchment
+            The sub-catchment whose FGI and top reservoir are updated.
         excess_dd : float, optional
             Degree-day equivalent of leftover melt energy from
             _compute_snowpack() [°C·day]. Reduces FGI alongside air
@@ -1808,7 +1888,7 @@ class Buckets(object):
             Calibrated f_to_discharge of the top reservoir, saved before any
             frozen-ground override. Restore it after the discharge loop.
         """
-        f0 = self.reservoirs[0].f_to_discharge
+        f0 = sub_catchment.reservoirs[0].f_to_discharge
         if not self.use_frozen_ground or np.isinf(self.fdd_threshold):
             return f0
 
@@ -1817,8 +1897,10 @@ class Buckets(object):
                 "fdd_threshold is set but 'Mean Temperature [C]' is missing "
                 "from the input data. FGI requires temperature data."
             )
+        _swe  = (sub_catchment.snowpack.Hwater
+                 if sub_catchment.snowpack is not None else 0.0)
         T     = self.hydrodata['Mean Temperature [C]'][time_step]
-        T_eff = T * np.exp(-self.snow_insulation_k * self.snowpack.Hwater)
+        T_eff = T * np.exp(-self.snow_insulation_k * _swe)
 
         if self._has_trange:
             T_max = self.hydrodata['Maximum Temperature [C]'][time_step]
@@ -1832,20 +1914,118 @@ class Buckets(object):
         else:
             A_t = self.fgi_decay_coeff
 
-        self._fgi = max(0.0, A_t * self._fgi - T_eff - excess_dd)
-        if self._fgi > self.fdd_threshold:
-            self.reservoirs[0].f_to_discharge = 1.0
+        sub_catchment.fgi = max(0.0, A_t * sub_catchment.fgi - T_eff - excess_dd)
+        if sub_catchment.fgi > self.fdd_threshold:
+            sub_catchment.reservoirs[0].f_to_discharge = 1.0
         return f0
+
+    @staticmethod
+    def _sub_catchment_storage(sub_catchment):
+        """
+        Total subsurface storage [mm] in a sub-catchment: reservoir water plus
+        any tile-drain sub-reservoir water.
+        """
+        return (sum(r.Hwater for r in sub_catchment.reservoirs)
+                + sum(r.tile_res.Hwater for r in sub_catchment.reservoirs
+                      if r.tile_res is not None))
+
+    def _advance_sub_catchment(self, time_step, sub_catchment):
+        """
+        Advance one sub-catchment by a single time step.
+
+        Runs the snowpack, frozen-ground index, the vertical reservoir cascade,
+        and reservoir-draw ET for this sub-catchment, mutating its state in
+        place. Forcing is read from the basin-level columns of self.hydrodata.
+
+        Parameters
+        ----------
+        time_step : int
+            Row index in self.hydrodata for this step.
+        sub_catchment : SubCatchment
+            The sub-catchment to advance.
+
+        Returns
+        -------
+        qi : float
+            Per-unit-area specific discharge from this sub-catchment [mm/day],
+            unweighted by area fraction.
+        flux_direct, flux_tile, flux_multipath : float
+            Per-unit-area flux-partition components [mm/day]: direct runoff,
+            tile drainage, and multipath drainage.
+        """
+        reservoirs = sub_catchment.reservoirs
+        excess_dd = (self._compute_snowpack(time_step, sub_catchment)
+                     if self.has_snowpack else 0.0)
+        f0 = self._update_fgi(time_step, sub_catchment, excess_dd)
+
+        qi = 0.0
+        for i in range(len(reservoirs)):
+            if i == 0:
+                if self.has_snowpack:
+                    _recharge = (sub_catchment.snowpack.H_infiltrated
+                                 + sub_catchment.H_deficit_carry)
+                else:
+                    if self.use_et_reservoir_draw:
+                        _recharge = (
+                            self.hydrodata['Precipitation [mm/day]'][time_step] +
+                            sub_catchment.H_deficit_carry)
+                    else:
+                        _recharge = (
+                            self.hydrodata['Precipitation [mm/day]'][time_step] -
+                            self.hydrodata['ET for model [mm/day]'][time_step]
+                            * self._et_stress_factor(sub_catchment) +
+                            sub_catchment.H_deficit_carry)
+                # Hortonian-inspired bypass: fraction exits without entering reservoirs.
+                _q_direct = (max(0.0, _recharge) * self.direct_runoff_fraction
+                             if self.use_direct_runoff else 0.0)
+                qi += _q_direct
+                reservoirs[i].recharge(_recharge - _q_direct)
+            else:
+                # Let water infiltrate to lower layers effectively
+                # instantaneously; this isn't quite realistic, but
+                # should be a simpler approach for parameter calibration
+                # (Plus, this is just the water that did exit that above
+                # container, which is already free to discharge, so this
+                # seems more self-consistent.)
+                # The amount of infiltrated water from above could be
+                # negative; this represents ET in excess of what the
+                # unsaturated zone ("soil zone"; top reservoir) holds.
+                # Deeper loss of water could be due to plants tapping into
+                # groundwater, direct lake evaporation, etc. -- or related
+                # to this model not being physical or distributed, so just
+                # needing to balance mass.
+                reservoirs[i].recharge(
+                    reservoirs[i-1].H_to_next
+                    + reservoirs[i-1].H_deficit)
+            H_next = (reservoirs[i + 1].Hwater
+                      if i + 1 < len(reservoirs) else None)
+            reservoirs[i].discharge(self.dt, H_next=H_next)
+            qi += reservoirs[i].H_discharge
+
+        reservoirs[0].f_to_discharge = f0
+        sub_catchment.H_deficit_carry = reservoirs[-1].H_deficit
+
+        flux_direct    = _q_direct
+        flux_tile      = sum(r.H_tile for r in reservoirs)
+        flux_multipath = sum(r.H_multipath for r in reservoirs)
+
+        if self.use_et_reservoir_draw:
+            qi += self._draw_et_from_reservoirs(
+                self.hydrodata['ET for model [mm/day]'][time_step],
+                sub_catchment)
+
+        return qi, flux_direct, flux_tile, flux_multipath
 
     def update(self, time_step=None):
         """
         Advance the model by one time step.
 
-        Routes precipitation minus ET through the snowpack (if present) and
-        then through each subsurface reservoir in order from shallowest to
-        deepest. Stores modeled specific discharge, snowpack SWE, and total
-        subsurface storage in self.hydrodata for the current time step.
-        Part of the CSDMS Basic Model Interface.
+        Advances each parallel sub-catchment (snowpack, frozen ground, and its
+        reservoir cascade from shallowest to deepest) and aggregates them to
+        basin means, weighting per-unit-area quantities by sub-catchment area
+        fraction. Stores modeled specific discharge, snowpack SWE, and total
+        subsurface storage in self.hydrodata for the current time step. Part of
+        the CSDMS Basic Model Interface.
 
         Parameters
         ----------
@@ -1873,86 +2053,48 @@ class Buckets(object):
             self.hydrodata.at[time_step,
                               'Specific Discharge (modeled) [mm/day]'] = np.nan
             if self.has_snowpack:
-                self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = (
-                    self.snowpack.Hwater)
+                self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = sum(
+                    sc.area_fraction * sc.snowpack.Hwater
+                    for sc in self.sub_catchments)
             self.hydrodata.at[time_step,
-                              'Subsurface storage (modeled total) [mm]'] = (
-                np.sum([res.Hwater for res in self.reservoirs])
-                + np.sum([res.tile_res.Hwater for res in self.reservoirs
-                          if res.tile_res is not None]))
+                              'Subsurface storage (modeled total) [mm]'] = sum(
+                sc.area_fraction * self._sub_catchment_storage(sc)
+                for sc in self.sub_catchments)
             self._flux_direct_runoff = np.nan
             self._flux_tile = np.nan
             self._flux_multipath = np.nan
             return
 
-        excess_dd = self._compute_snowpack(time_step) if self.has_snowpack else 0.0
-        f0 = self._update_fgi(time_step, excess_dd)
-
-        qi = 0.0
-        for i in range(len(self.reservoirs)):
-            if i == 0:
-                if self.has_snowpack:
-                    _recharge = (self.snowpack.H_infiltrated
-                                 + self.H_deficit_carry)
-                else:
-                    if self.use_et_reservoir_draw:
-                        _recharge = (
-                            self.hydrodata['Precipitation [mm/day]'][time_step] +
-                            self.H_deficit_carry)
-                    else:
-                        _recharge = (
-                            self.hydrodata['Precipitation [mm/day]'][time_step] -
-                            self.hydrodata['ET for model [mm/day]'][time_step]
-                            * self._et_stress_factor() +
-                            self.H_deficit_carry)
-                # Hortonian-inspired bypass: fraction exits without entering reservoirs.
-                _q_direct = (max(0.0, _recharge) * self.direct_runoff_fraction
-                             if self.use_direct_runoff else 0.0)
-                qi += _q_direct
-                self.reservoirs[i].recharge(_recharge - _q_direct)
-            else:
-                # Let water infiltrate to lower layers effectively
-                # instantaneously; this isn't quite realistic, but
-                # should be a simpler approach for parameter calibration
-                # (Plus, this is just the water that did exit that above
-                # container, which is already free to discharge, so this
-                # seems more self-consistent.)
-                # The amount of infiltrated water from above could be
-                # negative; this represents ET in excess of what the
-                # unsaturated zone ("soil zone"; top reservoir) holds.
-                # Deeper loss of water could be due to plants tapping into
-                # groundwater, direct lake evaporation, etc. -- or related
-                # to this model not being physical or distributed, so just
-                # needing to balance mass.
-                self.reservoirs[i].recharge(
-                    self.reservoirs[i-1].H_to_next
-                    + self.reservoirs[i-1].H_deficit)
-            H_next = (self.reservoirs[i + 1].Hwater
-                      if i + 1 < len(self.reservoirs) else None)
-            self.reservoirs[i].discharge(self.dt, H_next=H_next)
-            qi += self.reservoirs[i].H_discharge
-
-        self.reservoirs[0].f_to_discharge = f0
-        self.H_deficit_carry = self.reservoirs[-1].H_deficit
+        qi             = 0.0
+        swe            = 0.0
+        storage        = 0.0
+        flux_direct    = 0.0
+        flux_tile      = 0.0
+        flux_multipath = 0.0
+        for sc in self.sub_catchments:
+            a = sc.area_fraction
+            qi_sc, dr_sc, tile_sc, mp_sc = self._advance_sub_catchment(
+                time_step, sc)
+            qi             += a * qi_sc
+            if self.has_snowpack:
+                swe        += a * sc.snowpack.Hwater
+            storage        += a * self._sub_catchment_storage(sc)
+            flux_direct    += a * dr_sc
+            flux_tile      += a * tile_sc
+            flux_multipath += a * mp_sc
 
         # Record per-step flux-partition components (mm/day) for diagnostics
         # and BMI coupling.  These are already reflected in the total
         # specific discharge above; recording them changes no result.
-        self._flux_direct_runoff = _q_direct
-        self._flux_tile = sum(r.H_tile for r in self.reservoirs)
-        self._flux_multipath = sum(r.H_multipath for r in self.reservoirs)
-
-        if self.use_et_reservoir_draw:
-            qi += self._draw_et_from_reservoirs(
-                self.hydrodata['ET for model [mm/day]'][time_step])
+        self._flux_direct_runoff = flux_direct
+        self._flux_tile          = flux_tile
+        self._flux_multipath     = flux_multipath
 
         self.hydrodata.at[time_step, 'Specific Discharge (modeled) [mm/day]'] = qi
         if self.has_snowpack:
-            self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = self.snowpack.Hwater
-        self.hydrodata.at[time_step, 'Subsurface storage (modeled total) [mm]'] = (
-            np.sum([res.Hwater for res in self.reservoirs])
-            + np.sum([res.tile_res.Hwater for res in self.reservoirs
-                      if res.tile_res is not None]))
+            self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = swe
+        self.hydrodata.at[time_step,
+                          'Subsurface storage (modeled total) [mm]'] = storage
         if self._store_depths:
             for _i, _res in enumerate(self.reservoirs):
                 self.hydrodata.at[time_step,
@@ -2129,10 +2271,14 @@ class Buckets(object):
             for _i, _r in enumerate(self.reservoirs):
                 if _r.tile_res is not None:
                     _r.tile_res.Hwater = float(_finalHTile[_i])
+            # The JIT path runs a single sub-catchment; write its final state
+            # back to the first (only) sub-catchment. (Multi-sub-catchment JIT
+            # support is added in a following commit.)
+            _sc0 = self.sub_catchments[0]
             if self.has_snowpack:
-                self.snowpack.Hwater = float(_finalSnow)
-            self._fgi            = float(_finalFgi)
-            self.H_deficit_carry = float(_finalDC)
+                _sc0.snowpack.Hwater = float(_finalSnow)
+            _sc0.fgi             = float(_finalFgi)
+            _sc0.H_deficit_carry = float(_finalDC)
 
         elif _run_idx is not None:
             for i in _run_idx:
