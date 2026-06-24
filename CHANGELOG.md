@@ -20,6 +20,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   area 1.0 reproduces the previous single-cascade behaviour exactly, so
   existing configurations and calls are unchanged. New `SubCatchment` class
   and `Buckets.sub_catchments` / `Buckets.n_sub_catchments`.
+  `run_and_score` chains per-sub-catchment storage state (reservoir depths,
+  snowpack, frozen-ground index, carried deficit) across decade windows:
+  `final_states` / `initial_states` are nested per sub-catchment when there
+  are several, and stay flat/scalar for a single sub-catchment.
 
 ## [3.0.0] - 2026-06-23
 
