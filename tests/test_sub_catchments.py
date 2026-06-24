@@ -344,6 +344,55 @@ def test_run_and_score_sub_catchments(tmp_path):
     assert [r.recession_coeff for r in b.sub_catchments[1].reservoirs] == [1200]
 
 
+def test_capture_states_flat_for_single_sub_catchment(tmp_path):
+    """A single sub-catchment captures the legacy flat/scalar state dict."""
+    import mnished
+    from mnished.calibration import _capture_states
+    cfg = _legacy_cfg([14, 500], [0.3, 1.0], [float('inf'), float('inf')], [5, 300])
+    b = mnished.Buckets()
+    b.initialize(_write(tmp_path, cfg))
+    state = _capture_states(b)
+    assert 'sub_catchments' not in state
+    assert set(state) == {'reservoirs', 'snowpack', 'fgi', 'H_deficit_carry'}
+    assert len(state['reservoirs']) == 2
+
+
+def test_decadal_chaining_round_trips_k_gt_1(tmp_path):
+    """Chaining two windows via captured/restored per-sub-catchment state
+    reproduces a single continuous run."""
+    import mnished
+    from mnished.calibration import _capture_states, _restore_initial_states
+    cfg_path = _write(tmp_path, _two_sc_cfg())
+
+    b_cont = mnished.Buckets()
+    b_cont.initialize(cfg_path)
+    b_cont.run()
+    dates = b_cont.hydrodata['Date']
+    mid = dates.iloc[len(dates) // 2]
+    after = dates.iloc[len(dates) // 2 + 1]
+    q_cont = b_cont.hydrodata[Q_COL].astype(float).to_numpy()
+
+    # Run to mid, capture per-sub-catchment state, restore into a fresh model.
+    b_a = mnished.Buckets()
+    b_a.initialize(cfg_path)
+    b_a.run(end=mid)
+    state = _capture_states(b_a)
+    assert 'sub_catchments' in state and len(state['sub_catchments']) == 2
+    assert set(state['sub_catchments'][0]) == {
+        'reservoirs', 'snowpack', 'fgi', 'H_deficit_carry'}
+
+    b_b = mnished.Buckets()
+    b_b.initialize(cfg_path)
+    _restore_initial_states(b_b, state)
+    b_b.run(start=after)
+    # Rows before `after` are unrun (pd.NA); coerce to NaN.
+    q_chain = b_b.hydrodata[Q_COL].to_numpy(dtype='float64', na_value=np.nan)
+
+    mask = (dates >= after).to_numpy()
+    np.testing.assert_allclose(q_chain[mask], q_cont[mask],
+                               rtol=1e-9, atol=1e-9, equal_nan=True)
+
+
 def test_run_and_score_rejects_flat_and_structured(tmp_path):
     import mnished
     cfg = _two_sc_cfg()

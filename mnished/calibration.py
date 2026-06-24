@@ -112,12 +112,23 @@ fdc_obs : pd.Series
 fdc_mod : pd.Series
     Modelled flow duration curve (same format as fdc_obs).
 final_states : dict
-    End-of-run reservoir states suitable for passing as
-    ``initial_states`` to the next call::
+    End-of-run storage states suitable for passing as ``initial_states`` to
+    the next call. For a single sub-catchment, flat and scalar::
 
         {'reservoirs': [H_shallow, H_deep, ...],  # [mm]
          'snowpack':    H_snow_SWE,               # [mm SWE]
-         'fgi':         frozen_ground_index}       # [°C·day]
+         'fgi':         frozen_ground_index,      # [°C·day]
+         'H_deficit_carry': carried_deficit}      # [mm]
+
+    For several parallel sub-catchments, nested one level deeper — a
+    ``'sub_catchments'`` list with one such dict per sub-catchment (config
+    order), each carrying that zone's reservoir depths, snowpack, FGI, and
+    carried deficit::
+
+        {'sub_catchments': [
+            {'reservoirs': [...], 'snowpack': ..., 'fgi': ...,
+             'H_deficit_carry': ...},  # sub-catchment 0
+            ...]}
 
 buckets : Buckets
     The :class:`~mnished.Buckets` object after the final run,
@@ -471,6 +482,86 @@ def _apply_reservoir_overrides(reservoirs, over):
     return k
 
 
+def _capture_states(b):
+    """
+    Capture end-of-run storage state for chaining to a following run.
+
+    For a single sub-catchment the state is flat and scalar
+    (``{'reservoirs': [...], 'snowpack': float, 'fgi': float,
+    'H_deficit_carry': float}``), identical to earlier versions. For several
+    sub-catchments it is nested one level deeper — a ``'sub_catchments'`` list
+    with one such dict per sub-catchment (in config order), each carrying that
+    zone's reservoir depths plus its own snowpack, FGI, and carried deficit.
+    """
+    def _one(sc):
+        return {
+            'reservoirs':      [r.Hwater for r in sc.reservoirs],
+            'snowpack':        (sc.snowpack.Hwater
+                                if (b.has_snowpack and sc.snowpack is not None)
+                                else 0.0),
+            'fgi':             sc.fgi,
+            'H_deficit_carry': sc.H_deficit_carry,
+        }
+
+    if b.n_sub_catchments == 1:
+        return _one(b.sub_catchments[0])
+    return {'sub_catchments': [_one(sc) for sc in b.sub_catchments]}
+
+
+def _restore_initial_states(b, states):
+    """
+    Restore full initial storage state from a (possibly nested) state dict.
+
+    Accepts either the flat single-sub-catchment form or the nested
+    ``{'sub_catchments': [...]}`` form produced by :func:`_capture_states`;
+    missing snowpack/FGI/deficit entries default to zero (a full restore).
+    """
+    if 'sub_catchments' in states:
+        for sc, s in zip(b.sub_catchments, states['sub_catchments']):
+            for r, h in zip(sc.reservoirs, s['reservoirs']):
+                r.Hwater = h
+            if b.has_snowpack and sc.snowpack is not None:
+                sc.snowpack.Hwater = s.get('snowpack', 0.0)
+            sc.fgi             = s.get('fgi', 0.0)
+            sc.H_deficit_carry = s.get('H_deficit_carry', 0.0)
+    else:
+        for i, h in enumerate(states['reservoirs']):
+            b.reservoirs[i].Hwater = h
+        if b.has_snowpack:
+            b.snowpack.Hwater = states.get('snowpack', 0.0)
+        b._fgi             = states.get('fgi', 0.0)
+        b.H_deficit_carry  = states.get('H_deficit_carry', 0.0)
+
+
+def _inject_post_spinup_states(b, states):
+    """
+    Inject post-spin-up states, leaving anything not provided at its current
+    (spun-up) value.
+
+    Reservoir entries may be ``None`` to keep that reservoir's spun-up depth;
+    absent ``snowpack``/``fgi`` keep their current values; ``H_deficit_carry``
+    defaults to 0. Accepts the flat or nested form, matching
+    :func:`_capture_states`.
+    """
+    if 'sub_catchments' in states:
+        for sc, s in zip(b.sub_catchments, states['sub_catchments']):
+            for r, h in zip(sc.reservoirs, s.get('reservoirs', [])):
+                if h is not None:
+                    r.Hwater = h
+            if b.has_snowpack and sc.snowpack is not None:
+                sc.snowpack.Hwater = s.get('snowpack', sc.snowpack.Hwater)
+            sc.fgi             = s.get('fgi', sc.fgi)
+            sc.H_deficit_carry = s.get('H_deficit_carry', 0.0)
+    else:
+        for i, h in enumerate(states.get('reservoirs', [])):
+            if h is not None and i < len(b.reservoirs):
+                b.reservoirs[i].Hwater = h
+        if b.has_snowpack:
+            b.snowpack.Hwater = states.get('snowpack', b.snowpack.Hwater)
+        b._fgi             = states.get('fgi', b._fgi)
+        b.H_deficit_carry  = states.get('H_deficit_carry', 0.0)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -578,25 +669,28 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         insulation).  Literature values: LISFLOOD uses ~0.057 mm⁻¹;
         GSSHA default is 0.5 (units ambiguous in original source).
     initial_states : dict, optional
-        Starting reservoir water depths, snowpack SWE, and frozen ground
-        index, as returned by a previous call's CalibResult.final_states.
-        Format::
+        Starting reservoir water depths, snowpack SWE, frozen ground index,
+        and carried deficit, as returned by a previous call's
+        CalibResult.final_states.  Flat for a single sub-catchment::
 
             {'reservoirs': [H_shallow, H_deep, ...],
              'snowpack':    H_snow_SWE,
-             'fgi':         frozen_ground_index}
+             'fgi':         frozen_ground_index,
+             'H_deficit_carry': carried_deficit}
 
-        When provided, these override the H0 values from cfg.  Use with
-        spin_up_cycles=0 when chaining consecutive decades so that water
-        storage and frozen-ground state are physically continuous.
-        When None (default), reservoirs are initialised to their
+        or nested under ``'sub_catchments'`` for several (see
+        ``CalibResult.final_states``).  When provided, these override the H0
+        values from cfg.  Use with spin_up_cycles=0 when chaining consecutive
+        decades so that water storage and frozen-ground state are physically
+        continuous.  When None (default), reservoirs are initialised to their
         analytical steady-state depths before spin-up (see
         :func:`_steady_state_depths`).
     post_spinup_states : dict, optional
         Reservoir water depths injected *after* spin-up completes and
         *before* the scored run begins.  Same format as ``initial_states``
-        but only the ``'reservoirs'`` key is used; individual entries may
-        be ``None`` to leave that reservoir at its spin-up end state.
+        (flat, or nested under ``'sub_catchments'``); individual reservoir
+        entries may be ``None`` to leave that reservoir at its spin-up end
+        state, and absent snowpack/FGI keep their spun-up values.
         Intended for calibrating decade-specific initial storage (e.g.
         ``log__H0_deep``) when the spin-up equilibrium is poorly
         constrained by sparse pre-decade forcing.  Only applied in decade
@@ -910,16 +1004,11 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     # --- Set initial storage states ---
     if initial_states is not None:
         # Analytical or chained initial conditions supplied by the caller.
-        for i, h in enumerate(initial_states['reservoirs']):
-            b.reservoirs[i].Hwater = h
-        if b.has_snowpack:
-            b.snowpack.Hwater = initial_states.get('snowpack', 0.0)
-        b._fgi = initial_states.get('fgi', 0.0)
         # H_deficit_carry can accumulate a large phantom deficit during
         # b.initialize()'s internal spin-up (especially with
-        # enforce_water_balance='none').  Reset it so the decade run starts
-        # cleanly from the specified reservoir depths.
-        b.H_deficit_carry = initial_states.get('H_deficit_carry', 0.0)
+        # enforce_water_balance='none'); _restore_initial_states resets it
+        # (default 0) so the decade run starts cleanly from the given depths.
+        _restore_initial_states(b, initial_states)
     else:
         # Analytical steady-state initialization: correct for reservoirs
         # whose timescale exceeds the record length and accelerates spin-up
@@ -959,13 +1048,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         # the spin-up equilibrium, which may be biased by sparse pre-decade
         # forcing or by candidate parameters far from the decade optimum.
         if post_spinup_states is not None:
-            for i, h in enumerate(post_spinup_states.get('reservoirs', [])):
-                if h is not None and i < len(b.reservoirs):
-                    b.reservoirs[i].Hwater = h
-            if b.has_snowpack:
-                b.snowpack.Hwater = post_spinup_states.get('snowpack', b.snowpack.Hwater)
-            b._fgi = post_spinup_states.get('fgi', b._fgi)
-            b.H_deficit_carry = post_spinup_states.get('H_deficit_carry', 0.0)
+            _inject_post_spinup_states(b, post_spinup_states)
         b.run(start=start, end=end)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
@@ -977,12 +1060,9 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         b.run()
 
     # --- Capture end-of-run states for chaining to next decade ---
-    final_states = {
-        'reservoirs':      [res.Hwater for res in b.reservoirs],
-        'snowpack':        b.snowpack.Hwater if b.has_snowpack else 0.0,
-        'fgi':             b._fgi,
-        'H_deficit_carry': b.H_deficit_carry,
-    }
+    # Flat/scalar for a single sub-catchment (back-compatible); nested per
+    # sub-catchment when there are several.
+    final_states = _capture_states(b)
 
     # --- Optional: route total runoff through Nash cascade ---
     # Routing is applied to the full simulation output before the scoring
