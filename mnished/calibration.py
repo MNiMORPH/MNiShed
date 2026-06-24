@@ -562,6 +562,46 @@ def _inject_post_spinup_states(b, states):
         b.H_deficit_carry  = states.get('H_deficit_carry', 0.0)
 
 
+def _validate_finite_states(states, arg_name):
+    """
+    Raise ValueError if a chained state dict carries non-finite (NaN/inf)
+    values.
+
+    Chaining initial conditions from a partial-data or failed decade can yield
+    NaN end-states; passed on unchecked they propagate silently through the run
+    (every modelled flow becomes NaN and the score looks merely poor rather
+    than broken). Surfacing it at the boundary turns silent corruption into an
+    immediate, actionable error.
+
+    Accepts the flat single-sub-catchment form or the nested
+    ``{'sub_catchments': [...]}`` form. ``None`` reservoir entries (used by
+    ``post_spinup_states`` to mean "keep the spin-up value") are skipped.
+    """
+    if states is None:
+        return
+
+    _hint = ("Chained initial states from a partial-data or failed decade can "
+             "be NaN; do not chain from it — use initial_states=None for "
+             "analytical steady-state initialisation, or skip that decade.")
+
+    def _check(d, where):
+        for i, h in enumerate(d.get('reservoirs', [])):
+            if h is not None and not math.isfinite(h):
+                raise ValueError(
+                    f"{where}['reservoirs'][{i}] is non-finite ({h}). {_hint}")
+        for key in ('snowpack', 'fgi', 'H_deficit_carry'):
+            v = d.get(key)
+            if v is not None and not math.isfinite(v):
+                raise ValueError(
+                    f"{where}['{key}'] is non-finite ({v}). {_hint}")
+
+    if 'sub_catchments' in states:
+        for k, sc in enumerate(states['sub_catchments']):
+            _check(sc, f"{arg_name}['sub_catchments'][{k}]")
+    else:
+        _check(states, arg_name)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -796,6 +836,11 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     """
     if metric not in _METRICS:
         raise ValueError(f"metric must be one of {list(_METRICS)}; got {metric!r}")
+
+    # Fail loudly on NaN/inf chained states rather than silently propagating
+    # them through the run (a partial-data/failed decade can produce them).
+    _validate_finite_states(initial_states, 'initial_states')
+    _validate_finite_states(post_spinup_states, 'post_spinup_states')
 
     b = Buckets()
     b.initialize(cfg, enforce_water_balance=enforce_water_balance)

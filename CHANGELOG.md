@@ -25,6 +25,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `final_states` / `initial_states` are nested per sub-catchment when there
   are several, and stay flat/scalar for a single sub-catchment.
 
+### Fixed
+
+- `run_and_score` now validates chained `initial_states` / `post_spinup_states`
+  and raises a clear `ValueError` if they contain non-finite (NaN/inf) values,
+  naming the offending key/index. Previously a NaN state from a partial-data or
+  failed decade propagated silently — every modelled flow became NaN and the
+  score looked merely poor rather than broken. (`None` reservoir entries in
+  `post_spinup_states`, meaning "keep the spin-up value", are still allowed.)
+
 ## [3.0.0] - 2026-06-23
 
 Major release. The library was renamed from **hydroRaVENS** to **MNiShed**,
