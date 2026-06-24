@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `final_states` / `initial_states` are nested per sub-catchment when there
   are several, and stay flat/scalar for a single sub-catchment.
 
+### Deprecated
+
+- The flat single-sub-catchment state shape (`{'reservoirs': [...],
+  'snowpack': ..., 'fgi': ...}`) for `run_and_score`'s `initial_states` /
+  `post_spinup_states`. Passing it now emits a `DeprecationWarning`; it will be
+  removed in v4.0 in favour of the uniform per-sub-catchment form
+  (`{'sub_catchments': [...]}`). See
+  [#18](https://github.com/MNiMORPH/MNiShed/issues/18). The nested form is
+  accepted at any number of sub-catchments (including one) and does not warn.
+
 ### Fixed
 
 - `run_and_score` now validates chained `initial_states` / `post_spinup_states`

@@ -602,6 +602,30 @@ def _validate_finite_states(states, arg_name):
         _check(states, arg_name)
 
 
+def _warn_if_flat_states(states, arg_name):
+    """
+    Emit a DeprecationWarning when a *flat* (single-sub-catchment) state dict is
+    passed to run_and_score.
+
+    The flat form (``{'reservoirs': [...], 'snowpack': ..., 'fgi': ...}``) is
+    the backward-compatible single-sub-catchment shape; it will be removed in
+    v4.0 in favour of the uniform per-sub-catchment form
+    (``{'sub_catchments': [...]}``) — see MNiMORPH/MNiShed#18. Still accepted
+    for now; the nested form is not deprecated and does not warn.
+    """
+    if states is not None and 'sub_catchments' not in states:
+        warnings.warn(
+            f"Passing a flat `{arg_name}` "
+            f"({{'reservoirs': [...], 'snowpack': ..., 'fgi': ...}}) is "
+            f"deprecated and will be removed in v4.0 (MNiMORPH/MNiShed#18); "
+            f"use the per-sub-catchment form "
+            f"{{'sub_catchments': [{{'reservoirs': [...], 'snowpack': ..., "
+            f"'fgi': ..., 'H_deficit_carry': ...}}]}} instead. (run_and_score "
+            f"still returns the flat form at K=1 in v3.x; it becomes nested in "
+            f"v4.0.)",
+            DeprecationWarning, stacklevel=3)
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -837,6 +861,10 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     if metric not in _METRICS:
         raise ValueError(f"metric must be one of {list(_METRICS)}; got {metric!r}")
 
+    # Deprecation: the flat single-sub-catchment state shape is removed in v4.0
+    # (#18). Warn on flat input; the nested form is the forward contract.
+    _warn_if_flat_states(initial_states, 'initial_states')
+    _warn_if_flat_states(post_spinup_states, 'post_spinup_states')
     # Fail loudly on NaN/inf chained states rather than silently propagating
     # them through the run (a partial-data/failed decade can produce them).
     _validate_finite_states(initial_states, 'initial_states')
