@@ -499,3 +499,34 @@ def test_jit_matches_pure_python_three_sub_catchments(tmp_path, monkeypatch):
     assert len(b_jit.reservoirs) == 6        # 1 + 2 + 3 across three zones
     np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
     np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+
+
+# ---------------------------------------------------------------------------
+# 12. store_depths column naming
+# ---------------------------------------------------------------------------
+
+def test_store_depths_column_names(tmp_path):
+    """store_depths keeps the legacy column names for a single sub-catchment
+    and labels columns by sub-catchment name (and within-zone index) for
+    several."""
+    import mnished
+
+    # K=1: legacy names, unchanged.
+    legacy = _legacy_cfg([14, 500], [0.3, 1.0], [float('inf'), float('inf')],
+                         [5, 300])
+    b1 = mnished.Buckets()
+    b1.initialize(_write(tmp_path, legacy, "one.yml"))
+    b1.run(store_depths=True)
+    assert 'H_reservoir_0 (modeled) [mm]' in b1.hydrodata.columns
+    assert 'H_reservoir_1 (modeled) [mm]' in b1.hydrodata.columns
+
+    # K>1: columns labeled by sub-catchment name and within-zone index.
+    b2 = mnished.Buckets()
+    b2.initialize(_write(tmp_path, _two_sc_cfg(), "two.yml"))
+    b2.run(store_depths=True)
+    cols = b2.hydrodata.columns
+    assert 'H_till_reservoir_0 (modeled) [mm]' in cols
+    assert 'H_till_reservoir_1 (modeled) [mm]' in cols
+    assert 'H_clay_reservoir_0 (modeled) [mm]' in cols
+    # The ambiguous flat names must not appear when there are several zones.
+    assert 'H_reservoir_0 (modeled) [mm]' not in cols
