@@ -1174,6 +1174,24 @@ class Buckets(object):
         """
         return [reservoir.Hwater for reservoir in self.reservoirs]
 
+    def _depth_column_names(self):
+        """
+        Column names for per-reservoir stored depths (``store_depths=True``),
+        aligned with the flat :attr:`reservoirs` order.
+
+        A single sub-catchment keeps the legacy ``'H_reservoir_{i} (modeled)
+        [mm]'`` names. With several sub-catchments the names are prefixed with
+        the sub-catchment name and use the reservoir's index *within* that
+        sub-catchment, e.g. ``'H_till_uplands_reservoir_0 (modeled) [mm]'``,
+        so each depth column is unambiguously attributable to a zone.
+        """
+        if self.n_sub_catchments == 1:
+            return [f'H_reservoir_{i} (modeled) [mm]'
+                    for i in range(len(self.sub_catchments[0].reservoirs))]
+        return [f'H_{sc.name}_reservoir_{j} (modeled) [mm]'
+                for sc in self.sub_catchments
+                for j in range(len(sc.reservoirs))]
+
     @staticmethod
     def _build_reservoir_cascade(res_cfg, H0_list):
         """
@@ -2135,9 +2153,8 @@ class Buckets(object):
         self.hydrodata.at[time_step,
                           'Subsurface storage (modeled total) [mm]'] = storage
         if self._store_depths:
-            for _i, _res in enumerate(self.reservoirs):
-                self.hydrodata.at[time_step,
-                                  f'H_reservoir_{_i} (modeled) [mm]'] = _res.Hwater
+            for _res, _col in zip(self.reservoirs, self._depth_column_names()):
+                self.hydrodata.at[time_step, _col] = _res.Hwater
 
     def evapotranspiration_Chang2019(self, Tmax=None, Tmin=None, photoperiod=None,
                                     k=0.69):
@@ -2231,8 +2248,8 @@ class Buckets(object):
 
         self._store_depths = store_depths
         if store_depths:
-            for _i in range(len(self.reservoirs)):
-                self.hydrodata[f'H_reservoir_{_i} (modeled) [mm]'] = pd.NA
+            for _col in self._depth_column_names():
+                self.hydrodata[_col] = pd.NA
 
         # JIT path: available when numba is installed, no PDM,
         # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
@@ -2329,8 +2346,8 @@ class Buckets(object):
                 self.hydrodata.loc[_idx, 'Snowpack (modeled) [mm SWE]'] = _SWE
             self.hydrodata.loc[_idx, 'Subsurface storage (modeled total) [mm]'] = _Hsub
             if store_depths:
-                for _i in range(len(self.reservoirs)):
-                    self.hydrodata.loc[_idx, f'H_reservoir_{_i} (modeled) [mm]'] = _Hres_out[:, _i]
+                for _i, _col in enumerate(self._depth_column_names()):
+                    self.hydrodata.loc[_idx, _col] = _Hres_out[:, _i]
             for _i, _h in enumerate(_finalH):
                 self.reservoirs[_i].Hwater = float(_h)
             for _i, _r in enumerate(self.reservoirs):
