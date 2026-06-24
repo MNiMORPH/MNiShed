@@ -317,6 +317,10 @@ because the optimizer can trade τ against *b* while holding MRT nearly
 constant.  See :ref:`Mean Residence Time <mean-residence-time>` in
 :doc:`model_description` for the derivation and interpretation.
 
+This tutorial builds a single-cascade model — one hydraulic zone. A basin with
+spatially distinct zones can be split into parallel sub-catchments, each its own
+cascade; see :ref:`sub-catchments-config` and :ref:`parallel-sub-catchments`.
+
 See Also
 --------
 

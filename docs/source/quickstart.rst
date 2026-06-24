@@ -58,6 +58,10 @@ is a recommended starting point for temperate catchments.  See
 :doc:`configuration` for all available options and :doc:`calibration` for
 guidance on choosing a model structure.
 
+This single cascade treats the basin as one hydraulic zone.  A basin with
+spatially distinct zones (for example till uplands and lake-clay lowlands) can
+instead be split into parallel sub-catchments; see :ref:`sub-catchments-config`.
+
 .. code-block:: yaml
 
     timeseries:
