@@ -356,6 +356,121 @@ def _steady_state_depths(reservoirs, mean_q):
     return depths
 
 
+def _apply_reservoir_overrides(reservoirs, over):
+    """
+    Apply per-reservoir parameter overrides from a dict to one cascade.
+
+    Used for per-sub-catchment overrides in run_and_score; mirrors the flat
+    per-reservoir argument semantics but reads from a dict and auto-counts free
+    parameters (the flat path uses explicit ``*_calibrated`` counts instead).
+
+    Parameters
+    ----------
+    reservoirs : list of Reservoir
+        The cascade to mutate, shallowest first.
+    over : dict
+        Override values keyed by parameter name (``'recession_coeff'``,
+        ``'f_to_discharge'``, ``'Hmax'``, ``'multipath_threshold'``,
+        ``'multipath_timescale'``, ``'leakance_R'``, ``'H_threshold'``,
+        ``'recession_exponents'``, ``'f_tile'``, ``'tau_tile'``, ``'pdm_H0'``).
+
+    Returns
+    -------
+    int
+        Number of free parameters set, for AIC k-counting.
+    """
+    k = 0
+
+    rc = over.get('recession_coeff')
+    if rc is not None:
+        for i, val in enumerate(rc):
+            reservoirs[i].recession_coeff = val
+        k += len(rc)
+
+    fd = over.get('f_to_discharge')
+    if fd is not None:
+        for i, val in enumerate(fd):
+            if val is not None:
+                reservoirs[i].f_to_discharge = val
+        k += sum(1 for v in fd if v is not None)
+
+    lk = over.get('leakance_R')
+    if lk is not None:
+        for i, val in enumerate(lk):
+            if val is not None:
+                reservoirs[i].leakance_R = val
+                reservoirs[i].junction_type = 'leakance'
+        k += sum(1 for v in lk if v is not None)
+
+    ht = over.get('H_threshold')
+    if ht is not None:
+        for i, val in enumerate(ht):
+            if val is not None:
+                reservoirs[i].H_threshold = val
+                reservoirs[i].junction_type = 'threshold'
+        k += sum(1 for v in ht if v is not None)
+
+    mthr = over.get('multipath_threshold')
+    mtau = over.get('multipath_timescale')
+    if mthr is not None or mtau is not None:
+        if mthr is None or mtau is None:
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must be "
+                "provided together (or both omitted).")
+        if len(mthr) != len(mtau):
+            raise ValueError(
+                "multipath_threshold and multipath_timescale must have "
+                "the same length.")
+        for i, (thr, tau) in enumerate(zip(mthr, mtau)):
+            if i >= len(reservoirs):
+                break
+            if (thr is None) ^ (tau is None):
+                raise ValueError(
+                    f"Reservoir {i}: multipath_threshold and "
+                    "multipath_timescale must be both None or both set.")
+            reservoirs[i].multipath_threshold = thr
+            reservoirs[i].multipath_timescale = tau
+        k += sum(1 for v in mthr if v is not None)
+
+    hm = over.get('Hmax')
+    if hm is not None:
+        for i, val in enumerate(hm):
+            reservoirs[i].Hmax = val
+        k += sum(1 for v in hm if np.isfinite(v))
+
+    pd_h0 = over.get('pdm_H0')
+    if pd_h0 is not None:
+        for i, val in enumerate(pd_h0):
+            if val is not None:
+                reservoirs[i].pdm_H0 = val
+        k += sum(1 for v in pd_h0 if v is not None)
+
+    ft = over.get('f_tile')
+    tt = over.get('tau_tile')
+    if ft is not None:
+        any_tile = False
+        for i, ftv in enumerate(ft[:len(reservoirs)]):
+            reservoirs[i].f_tile = ftv
+            if ftv > 0.0 and tt is not None:
+                reservoirs[i].tile_res = Reservoir(tt, f_to_discharge=1.0)
+                any_tile = True
+            else:
+                reservoirs[i].tile_res = None
+        k += len({v for v in ft if v > 0.0})
+        if any_tile:
+            k += 1
+
+    re = over.get('recession_exponents')
+    if re is not None:
+        for i, b_exp in enumerate(re):
+            if i >= len(reservoirs):
+                break
+            reservoirs[i].recession_exponent = float(b_exp)
+        k += len(re)
+
+    return k
+
+
 # ---------------------------------------------------------------------------
 # Public API
 # ---------------------------------------------------------------------------
@@ -372,6 +487,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   recession_exponents=None, recession_exponents_calibrated=0,
                   direct_runoff_fraction=None, baseflow_Q=None,
                   modules=None,
+                  sub_catchments=None,
                   initial_states=None,
                   post_spinup_states=None, post_spinup_k=0,
                   start=None, end=None, spin_up_cycles=None,
@@ -530,6 +646,23 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         ``'frozen_ground'``, ``'rain_on_snow'``, ``'direct_runoff'``.
         Values: bool.  Overrides the ``modules`` block in the YAML config.
         Absent keys leave the YAML/default value unchanged.
+    sub_catchments : list of dict or None, optional
+        Per-sub-catchment parameter overrides for a basin partitioned into
+        parallel sub-catchments (see :class:`mnished.SubCatchment`). The YAML
+        config defines the *structure* (how many sub-catchments and reservoirs);
+        this argument overrides values by position, one dict per sub-catchment
+        in config order. Each dict may contain ``'area_fraction'`` and any of
+        the per-reservoir override lists (``'recession_coeff'``,
+        ``'f_to_discharge'``, ``'Hmax'``, ``'multipath_threshold'``,
+        ``'multipath_timescale'``, ``'leakance_R'``, ``'H_threshold'``,
+        ``'recession_exponents'``, ``'f_tile'``, ``'tau_tile'``, ``'pdm_H0'``),
+        scoped to that sub-catchment's cascade with the same semantics as the
+        flat arguments. Mutually exclusive with the flat per-reservoir
+        arguments. When ``'area_fraction'`` is given it must still sum to 1
+        across sub-catchments. For AIC, every overridden value counts as one
+        free parameter, plus n_sub_catchments - 1 when area fractions are set.
+        Snow and ET parameters remain basin-level (the flat ``melt_factor``,
+        ``et_scale``, etc.). Default None (single-cascade calibration).
     enforce_water_balance : str, optional
         'water-year' (default): scale ET by a per-water-year multiplier so
         that P - Q - ET = 0 over each water year.
@@ -597,6 +730,43 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
 
     # --- Parameter overrides and free-parameter count ---
     k = 0
+
+    if sub_catchments is not None:
+        # Per-sub-catchment overrides. The flat per-reservoir arguments are
+        # mutually exclusive with this; basin-level (snow/ET/routing) overrides
+        # below still apply. The cfg owns the structure (number of
+        # sub-catchments and reservoirs); this overrides values by position.
+        _flat = {
+            'recession_coeff': recession_coeff, 'f_to_discharge': f_to_discharge,
+            'Hmax': Hmax, 'pdm_H0': pdm_H0, 'f_tile': f_tile, 'tau_tile': tau_tile,
+            'multipath_threshold': multipath_threshold,
+            'multipath_timescale': multipath_timescale,
+            'leakance_R': leakance_R, 'H_threshold': H_threshold,
+            'recession_exponents': recession_exponents,
+        }
+        _bad = [name for name, val in _flat.items() if val is not None]
+        if _bad:
+            raise ValueError(
+                "When 'sub_catchments' is given, per-reservoir parameters must "
+                "be supplied inside each sub-catchment dict, not as flat "
+                f"arguments; remove: {_bad}.")
+        if len(sub_catchments) != b.n_sub_catchments:
+            raise ValueError(
+                f"'sub_catchments' has {len(sub_catchments)} entries but the "
+                f"config defines {b.n_sub_catchments} sub-catchments.")
+        _set_area = False
+        for _sc_obj, _sc_over in zip(b.sub_catchments, sub_catchments):
+            if 'area_fraction' in _sc_over:
+                _sc_obj.area_fraction = _sc_over['area_fraction']
+                _set_area = True
+            k += _apply_reservoir_overrides(_sc_obj.reservoirs, _sc_over)
+        if _set_area:
+            _asum = sum(s.area_fraction for s in b.sub_catchments)
+            if abs(_asum - 1.0) > 1e-6:
+                raise ValueError(
+                    f"Sub-catchment area_fraction values must sum to 1.0; "
+                    f"got {_asum:.6f}.")
+            k += b.n_sub_catchments - 1   # last fraction is determined
 
     if recession_coeff is not None:
         for i, val in enumerate(recession_coeff):
