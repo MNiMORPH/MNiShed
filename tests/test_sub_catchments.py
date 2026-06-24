@@ -403,3 +403,99 @@ def test_run_and_score_rejects_flat_and_structured(tmp_path):
             cfg_path, spin_up_cycles=0, recession_coeff=[1, 2, 3],
             sub_catchments=[{'recession_coeff': [20, 400]},
                             {'recession_coeff': [1200]}])
+
+
+# ---------------------------------------------------------------------------
+# 11. Generalization to three sub-catchments
+# ---------------------------------------------------------------------------
+
+def test_three_identical_sub_catchments_equal_one(tmp_path):
+    """Area weighting generalizes: three identical sub-catchments with a
+    three-way area split reproduce a single cascade, regardless of the split."""
+    legacy = _legacy_cfg([14, 500], [0.3, 1.0], [20.0, float('inf')], [5, 300])
+    q_one = _run(_write(tmp_path, legacy, "one.yml")
+                 ).hydrodata[Q_COL].astype(float).to_numpy()
+
+    cfg = _base_cfg()
+
+    def _sc(name, area):
+        return {'name': name, 'area_fraction': area,
+                'reservoirs': {'recession_coefficients': [14, 500],
+                               'exfiltration_fractions': [0.3, 1.0],
+                               'maximum_effective_depths__mm': [20.0, float('inf')]},
+                'initial_conditions': {
+                    'water_reservoir_effective_depths__mm': [5, 300]}}
+    cfg['sub_catchments'] = [_sc('a', 0.2), _sc('b', 0.3), _sc('c', 0.5)]
+    b3 = _run(_write(tmp_path, cfg, "three.yml"))
+    assert b3.n_sub_catchments == 3
+    assert len(b3.reservoirs) == 6
+    q_three = b3.hydrodata[Q_COL].astype(float).to_numpy()
+
+    np.testing.assert_allclose(q_three, q_one, rtol=1e-9, atol=1e-9, equal_nan=True)
+
+
+def test_jit_matches_pure_python_three_sub_catchments(tmp_path, monkeypatch):
+    """JIT and pure-Python agree for three sub-catchments with cascades of
+    different lengths (1, 2, 3) and the advanced mechanics enabled — exercising
+    the flat reservoir-index ranges across three zones in both loops."""
+    pytest.importorskip("numba", exc_type=ImportError)
+    import mnished
+    import mnished.mnished as _m
+
+    cfg = _base_cfg()
+    cfg['general']['et_alpha'] = 0.6
+    cfg['modules']['et_reservoir_draw'] = True
+    cfg['sub_catchments'] = [
+        {'name': 'one', 'area_fraction': 0.5,
+         'reservoirs': {
+             'recession_coefficients': [200],
+             'exfiltration_fractions': [1.0],
+             'maximum_effective_depths__mm': [float('inf')],
+             'multipath_thresholds__mm': [20.0],
+             'multipath_timescales__days': [3.0]},
+         'initial_conditions': {
+             'water_reservoir_effective_depths__mm': [80],
+             'snowpack__mm_SWE': 2.0}},
+        {'name': 'two', 'area_fraction': 0.3,
+         'reservoirs': {
+             'recession_coefficients': [14, 500],
+             'exfiltration_fractions': [0.3, 1.0],
+             'maximum_effective_depths__mm': [20.0, float('inf')],
+             'recession_exponents': [2.0, 1.0],
+             'junction_types': ['threshold', 'fraction'],
+             'H_threshold__mm': [3.0, 0.0],
+             'tile_fractions': [0.3, 0.0],
+             'tile_residence_times__days': [3.0, None]},
+         'initial_conditions': {
+             'water_reservoir_effective_depths__mm': [5, 300],
+             'snowpack__mm_SWE': 1.0}},
+        {'name': 'three', 'area_fraction': 0.2,
+         'reservoirs': {
+             'recession_coefficients': [10, 100, 2000],
+             'exfiltration_fractions': [0.4, 0.7, 1.0],
+             'maximum_effective_depths__mm': [float('inf'), float('inf'),
+                                              float('inf')],
+             'junction_types': ['leakance', 'fraction', 'fraction'],
+             'leakance_R__days': [50.0, None, None]},
+         'initial_conditions': {
+             'water_reservoir_effective_depths__mm': [8, 60, 500],
+             'snowpack__mm_SWE': 0.5}},
+    ]
+    cfg_path = _write(tmp_path, cfg, "advanced_3sc.yml")
+
+    b_jit = mnished.Buckets()
+    b_jit.initialize(cfg_path)
+    b_jit.run()
+    q_jit = b_jit.hydrodata[Q_COL].astype(float).to_numpy()
+    s_jit = b_jit.hydrodata[S_COL].astype(float).to_numpy()
+
+    monkeypatch.setattr(_m, "_numba_available", False)
+    b_py = mnished.Buckets()
+    b_py.initialize(cfg_path)
+    b_py.run()
+    q_py = b_py.hydrodata[Q_COL].astype(float).to_numpy()
+    s_py = b_py.hydrodata[S_COL].astype(float).to_numpy()
+
+    assert len(b_jit.reservoirs) == 6        # 1 + 2 + 3 across three zones
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+    np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
