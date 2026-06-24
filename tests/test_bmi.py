@@ -386,3 +386,85 @@ def test_baseflow_output_reflects_config(monkeypatch):
     b.get_value("land_surface_water__baseflow_volume_flux", dest)
     assert dest[0] == pytest.approx(1.25)
     b.finalize()
+
+
+# ---------------------------------------------------------------------------
+# Sub-catchment (K>1) basin aggregation of snowpack SWE and FGI (#16)
+# ---------------------------------------------------------------------------
+
+SWE_VAR = "snowpack__liquid_equivalent_depth"
+FGI_VAR = "land_surface__frozen_ground_index"
+
+
+def _two_sub_catchment_cfg():
+    csv = os.path.join(EXAMPLE_DIR, "CannonTestInput.csv")
+    return {
+        'timeseries': {'datafile': csv},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 0},
+        'snowmelt': {'PDD_melt_factor': 1.0, 'fgi_decay_coeff': 0.97,
+                     'snow_insulation_k': 0.0},
+        'modules': {'snowpack': True, 'frozen_ground': True,
+                    'rain_on_snow': True, 'direct_runoff': False},
+        'sub_catchments': [
+            {'name': 'a', 'area_fraction': 0.55,
+             'reservoirs': {'recession_coefficients': [14, 500],
+                            'exfiltration_fractions': [0.3, 1.0],
+                            'maximum_effective_depths__mm': [float('inf'),
+                                                             float('inf')]},
+             'initial_conditions': {
+                 'water_reservoir_effective_depths__mm': [15, 400]}},
+            {'name': 'b', 'area_fraction': 0.45,
+             'reservoirs': {'recession_coefficients': [40, 1500],
+                            'exfiltration_fractions': [0.5, 1.0],
+                            'maximum_effective_depths__mm': [float('inf'),
+                                                             float('inf')]},
+             'initial_conditions': {
+                 'water_reservoir_effective_depths__mm': [20, 600]}},
+        ],
+    }
+
+
+def test_get_value_snowpack_fgi_area_weighted_for_sub_catchments(tmp_path):
+    """SWE and FGI BMI outputs are the area-weighted basin mean over
+    sub-catchments at K>1 (not just the first sub-catchment)."""
+    import yaml
+    from mnished import BmiMNiShed
+    p = tmp_path / "two_sc.yml"
+    p.write_text(yaml.safe_dump(_two_sub_catchment_cfg()))
+    b = BmiMNiShed()
+    b.initialize(str(p))
+    b.update()                       # advance past the NaN-before-first guard
+    m = b._model
+    # Distinct per-zone state so the area weighting is observable.
+    m.sub_catchments[0].snowpack.Hwater = 10.0
+    m.sub_catchments[1].snowpack.Hwater = 4.0
+    m.sub_catchments[0].fgi = 2.0
+    m.sub_catchments[1].fgi = 6.0
+    dest = np.empty(1, dtype=np.float64)
+    b.get_value(SWE_VAR, dest)
+    assert dest[0] == pytest.approx(0.55 * 10.0 + 0.45 * 4.0)   # 7.3, not 10
+    b.get_value(FGI_VAR, dest)
+    assert dest[0] == pytest.approx(0.55 * 2.0 + 0.45 * 6.0)    # 3.8, not 2
+    b.finalize()
+
+
+def test_get_value_snowpack_fgi_single_sub_catchment_unchanged(monkeypatch):
+    """K=1: SWE/FGI BMI outputs equal the single sub-catchment value, exactly
+    as before (back-compat)."""
+    from mnished import BmiMNiShed
+    monkeypatch.chdir(EXAMPLE_DIR)
+    b = BmiMNiShed()
+    b.initialize(EXAMPLE_CONFIG)
+    b.update()
+    m = b._model
+    m.sub_catchments[0].snowpack.Hwater = 7.0
+    m.sub_catchments[0].fgi = 3.0
+    dest = np.empty(1, dtype=np.float64)
+    b.get_value(SWE_VAR, dest)
+    assert dest[0] == pytest.approx(7.0)
+    b.get_value(FGI_VAR, dest)
+    assert dest[0] == pytest.approx(3.0)
+    b.finalize()

@@ -463,7 +463,13 @@ class BmiMNiShed(Bmi):
             return float(val) * m.drainage_basin_area__km2 * 1e3 / 86400.0
 
         if name == "snowpack__liquid_equivalent_depth":
-            return float(m.snowpack.Hwater) if m.has_snowpack else 0.0
+            # Area-weighted basin mean over sub-catchments (each carries its own
+            # snowpack); exact for a single sub-catchment.
+            if not m.has_snowpack:
+                return 0.0
+            return float(sum(
+                sc.area_fraction * sc.snowpack.Hwater
+                for sc in m.sub_catchments if sc.snowpack is not None))
 
         if name == "subsurface_water__depth":
             if idx < first:
@@ -500,7 +506,11 @@ class BmiMNiShed(Bmi):
             return np.nan if idx < first else float(m._flux_multipath)
 
         if name == "land_surface__frozen_ground_index":
-            return np.nan if idx < first else float(m._fgi)
+            # Area-weighted basin mean of the per-sub-catchment FGI.
+            if idx < first:
+                return np.nan
+            return float(sum(sc.area_fraction * sc.fgi
+                             for sc in m.sub_catchments))
 
         for i, rname in enumerate(_RESERVOIR_DEPTH_NAMES):
             if name == rname:

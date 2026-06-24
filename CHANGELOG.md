@@ -56,6 +56,11 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   failed decade propagated silently — every modelled flow became NaN and the
   score looked merely poor rather than broken. (`None` reservoir entries in
   `post_spinup_states`, meaning "keep the spin-up value", are still allowed.)
+- The BMI `snowpack__liquid_equivalent_depth` and
+  `land_surface__frozen_ground_index` outputs are now the area-weighted basin
+  mean over sub-catchments, instead of reporting only the first sub-catchment.
+  Exact for a single sub-catchment, so K=1 couplers are unchanged
+  ([#16](https://github.com/MNiMORPH/MNiShed/issues/16)).
 
 ## [3.0.0] - 2026-06-23
 
