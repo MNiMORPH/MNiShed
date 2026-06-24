@@ -346,6 +346,38 @@ where:
   groundwater (years) — but that mapping is the user's choice, analogous
   to the multi-component runoff structure of HBV (Bergström 1976).
 
+.. _parallel-sub-catchments:
+
+Parallel Sub-catchments (Optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+The cascade above is *vertical*: water drained from one reservoir recharges
+the one beneath it. Some basins, however, comprise spatially distinct
+hydraulic zones that drain to the same channel **in parallel** rather than in
+a vertical stack — for example till uplands with tile drainage alongside
+lake-clay lowlands, each with its own recession behaviour. Routing these
+through a single vertical cascade conflates a parallel structure into a serial
+one and can only partially represent it.
+
+A basin may instead be partitioned into :math:`K` **parallel sub-catchments**.
+Each sub-catchment :math:`k` is internally an ordinary vertical cascade (with
+its own recession, junction, multipath, and tile parameters) and carries its
+own snowpack and frozen-ground state. Each has a basin-area fraction
+:math:`a_k`, with :math:`\sum_k a_k = 1`. Sub-catchments are advanced
+independently and produce per-unit-area discharge :math:`Q_k`; basin discharge
+is their area-weighted mean:
+
+.. math::
+
+    Q_{\text{basin}} = \sum_{k=1}^{K} a_k \, Q_k
+
+Storage is likewise area-weighted (:math:`\sum_k a_k H_k`), so the basin water
+balance is exact. A single sub-catchment with :math:`a = 1` recovers the plain
+cascade exactly, and existing single-cascade configurations are treated as
+exactly that. In this release all sub-catchments share the basin-level forcing
+(precipitation, ET, temperature); per-sub-catchment forcing is a planned
+extension. See :ref:`sub-catchments-config` for how to configure them.
+
 .. _reservoir-junctions:
 
 Junctions Between Reservoirs (Optional)

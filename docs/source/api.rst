@@ -43,6 +43,17 @@ Snowpack accumulation and positive-degree-day melt.
    :undoc-members:
    :show-inheritance:
 
+SubCatchment
+------------
+
+A parallel hydraulic compartment of the basin with its own reservoir cascade
+and per-compartment snowpack and frozen-ground state.
+
+.. autoclass:: mnished.SubCatchment
+   :members:
+   :undoc-members:
+   :show-inheritance:
+
 run_and_score
 -------------
 
