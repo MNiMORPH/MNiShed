@@ -64,7 +64,9 @@ The fields of ``CalibResult`` are:
      - Modeled FDC at 99 exceedance percentiles (log-space).
    * - ``final_states``
      - dict
-     - Reservoir water depths (mm) at the end of the run.  Pass as
+     - End-of-run storage: reservoir depths (mm), snowpack SWE, frozen-ground
+       index, and carried deficit.  Flat for a single-zone basin; nested under
+       ``'sub_catchments'`` for a partitioned basin.  Pass as
        ``initial_states=`` in the next decade run to chain simulations.
    * - ``buckets``
      - :class:`~mnished.Buckets`
@@ -252,6 +254,34 @@ should be omitted.  For large basins, fit one routing step (N=1–3) with a
 timescale of order (basin_length / wave_speed).  Routing parameters are
 calibration parameters and add to :math:`k` if non-trivial.
 
+Calibrating parallel sub-catchments
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When the config partitions the basin into parallel sub-catchments (see
+:ref:`sub-catchments-config`), pass a ``sub_catchments`` argument — one dict per
+sub-catchment, in config order — to override that zone's ``area_fraction`` and
+per-reservoir parameters by position.  The config owns the structure (how many
+sub-catchments and reservoirs); the argument overrides the values each
+evaluation:
+
+.. code-block:: python
+
+    result = run_and_score(
+        'wild_rice.yml',
+        sub_catchments=[
+            {'area_fraction': 0.55, 'recession_coeff': [50, 500]},   # till uplands
+            {'area_fraction': 0.45, 'recession_coeff': [1500]},      # clay lowlands
+        ],
+        melt_factor=4.0,        # snow and ET parameters stay basin-level
+    )
+
+This is mutually exclusive with the flat per-reservoir arguments
+(``recession_coeff``, ``multipath_threshold``, …), which apply only to a
+single-cascade config.  Each overridden value counts as one free parameter for
+the AIC, plus ``n_sub_catchments − 1`` when the area fractions are calibrated.
+Because ``final_states`` carries each zone's storage separately, decade chaining
+(below) works unchanged for a partitioned basin.
+
 Chaining decade runs
 ^^^^^^^^^^^^^^^^^^^^
 
@@ -269,8 +299,11 @@ as the initial state of the next:
         spin_up_cycles=0,   # no spin-up — initial states already equilibrated
     )
 
-The ``final_states`` dict has keys matching ``reservoir_order`` in the driver
-config (e.g. ``{'soil': H_soil, 'intermediate': H_int, 'deep': H_deep}``).
+Treat ``final_states`` as an opaque token to pass straight back as
+``initial_states``: it carries the reservoir depths, snowpack, frozen-ground
+index, and carried deficit at the end of the run.  For a partitioned basin it
+is nested per sub-catchment, so each zone's snowpack and storage chain
+independently.
 
 Calibrating initial storage after spin-up
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^

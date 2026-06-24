@@ -9,7 +9,8 @@ A simple, flexible reservoir-based hydrological model for water balance simulati
 
 **MNiShed** (*MN* = Minnesota, *Mni* = water in Dakota, *Mini* = small/lumped,
 *Shed* = watershed) is a lumped conceptual model that routes precipitation
-through an optional snowpack and a cascade of reservoirs to produce streamflow.
+through an optional snowpack and one or more parallel sub-catchments — each a
+cascade of reservoirs — to produce streamflow.
 Ideal for long water-balance studies, climate impact assessments, and ungauged basins.
 
 **Key Features**
@@ -17,6 +18,9 @@ Ideal for long water-balance studies, climate impact assessments, and ungauged b
 
 * Cascading reservoirs -- linear or nonlinear (power-law) recession, soil to
   groundwater, with optional leakance/threshold junctions and tile drainage
+* Parallel sub-catchments -- partition a basin into spatially distinct
+  hydraulic zones (e.g. till uplands vs. lake-clay lowlands), each its own
+  reservoir cascade, area-weighted to the outlet
 * Calibration -- KGE, NSE, and log-KGE scoring; AIC model comparison; baseflow
   index; flow duration curve; Nash-cascade routing; decadal chaining
 * Fast -- Numba JIT-compiled daily time loop, roughly 100--400× faster than
