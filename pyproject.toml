@@ -53,8 +53,8 @@ jit = [
   # Numba JIT acceleration of the daily time loop (~2 orders of magnitude
   # faster; large saving for calibration). NumPy is capped at <2.3 because
   # that is the newest release the current Numba supports — without the cap
-  # `import numba` fails and the model silently falls back to pure Python.
-  # Relax the cap once Numba supports a newer NumPy.
+  # `import numba` fails; the model then falls back to pure Python and warns
+  # once (Buckets.run). Relax the cap once Numba supports a newer NumPy.
   "numba",
   "numpy<2.3",
 ]

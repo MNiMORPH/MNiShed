@@ -57,11 +57,11 @@ def _notify_jit_unavailable(reason):
     """
     Emit a one-time UserWarning that the pure-Python time loop is in use.
 
-    Called from Buckets.run() when the Numba JIT is *not* used for a reason
-    worth surfacing — numba installed-but-broken, or a configuration the JIT
-    does not support. Fires at most once per process. The plain "numba not
-    installed" default does not call this (pure Python is the expected
-    behaviour without the ``jit`` extra), and ``reason=None`` is a no-op.
+    Called from Buckets.run() when the Numba JIT is *not* used but numba is
+    installed-but-broken (e.g. a NumPy/Numba version mismatch) — a reason worth
+    surfacing. Fires at most once per process. The plain "numba not installed"
+    default does not call this (pure Python is the expected behaviour without
+    the ``jit`` extra), and ``reason=None`` is a no-op.
     """
     global _jit_unavailable_notified
     if _jit_unavailable_notified or reason is None:

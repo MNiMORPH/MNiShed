@@ -79,10 +79,3 @@ typical of water-balance and calibration studies, the JIT is **roughly
 The JIT carries a **one-time compilation cost** of a few seconds on the first
 run; Numba caches the compiled function (``cache=True``), so subsequent runs
 and processes reuse it with no further compile cost.
-
-**When the JIT is used.** The JIT path runs automatically when Numba is
-installed, for the common configuration. It falls back to the pure-Python
-loop — with identical results — for the two configurations it does not yet
-cover: the probability-distributed (PDM) saturation-excess model and the
-storage-dependent ``et_water_stress`` ET module. JIT↔pure-Python equivalence
-is verified by the test suite.

@@ -30,14 +30,13 @@ together with a compatible NumPy:
 The extra caps NumPy at ``<2.3`` (the newest release the current Numba
 supports); a bare ``pip install numba`` also works in an environment that
 already has ``numpy < 2.3``.  Without a compatible NumPy, ``import numba``
-fails and MNiShed silently uses the pure-Python loop.
+fails; MNiShed then uses the pure-Python loop and emits a one-time warning so
+the slowdown is not silent.
 
-When Numba is present the JIT loop is used automatically; when it is absent,
-MNiShed falls back to the pure-Python loop and the results are identical.
-The JIT path is also bypassed — reverting to pure Python — for the two
-configurations it does not yet cover: the probability-distributed (PDM)
-saturation-excess model and the storage-dependent ``et_water_stress`` ET
-module.
+When Numba is present the JIT loop is used automatically for every supported
+configuration (including PDM saturation-excess and ``et_water_stress``); when
+Numba is absent, MNiShed falls back to the pure-Python loop, with identical
+results.
 
 From PyPI
 ~~~~~~~~~
