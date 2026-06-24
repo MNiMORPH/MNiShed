@@ -25,6 +25,16 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `final_states` / `initial_states` are nested per sub-catchment when there
   are several, and stay flat/scalar for a single sub-catchment.
 
+### Changed
+
+- The pure-Python time-loop fallback is no longer silent. `Buckets.run()` emits
+  a one-time `UserWarning` when it falls back for a reason worth surfacing —
+  Numba installed but failing to import (usually a NumPy/Numba version
+  mismatch), or a configuration the JIT does not support (`pdm_H0`,
+  `et_water_stress`) — so an unexpected ~100× slowdown is visible. A plain
+  "Numba not installed" stays quiet, since pure Python is the expected default
+  without the `jit` extra.
+
 ### Deprecated
 
 - The flat single-sub-catchment state shape (`{'reservoirs': [...],

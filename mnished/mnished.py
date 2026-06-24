@@ -29,13 +29,48 @@ from matplotlib import pyplot as plt
 try:
     import numba as _numba
     _numba_available = True
-except ImportError:
+    _numba_import_error = None
+except ModuleNotFoundError:
+    # numba is not installed: pure Python is the expected default (the JIT is
+    # the optional `jit` extra), so this case stays silent.
     _numba_available = False
+    _numba_import_error = None
+except ImportError as _exc:
+    # numba is installed but failed to import — commonly the NumPy/Numba
+    # version mismatch the `jit` extra guards against (numpy<2.3). The user
+    # opted into the JIT but would silently get pure Python; flagged once at
+    # the first run() (see _notify_jit_unavailable).
+    _numba_available = False
+    _numba_import_error = _exc
 
 # c_p / L_f: water's specific heat divided by the latent heat of fusion.
 # c_p = 4186 J kg⁻¹ °C⁻¹, L_f = 334 000 J kg⁻¹  →  ≈ 0.01253 °C⁻¹
 # Gives mm SWE melted per mm of rain per °C of rain temperature.
 _CP_LF = 4186.0 / 334000.0
+
+# Set True once the first run() falls back to the pure-Python loop for a reason
+# worth surfacing, so the notice fires at most once per process.
+_jit_unavailable_notified = False
+
+
+def _notify_jit_unavailable(reason):
+    """
+    Emit a one-time UserWarning that the pure-Python time loop is in use.
+
+    Called from Buckets.run() when the Numba JIT is *not* used for a reason
+    worth surfacing — numba installed-but-broken, or a configuration the JIT
+    does not support. Fires at most once per process. The plain "numba not
+    installed" default does not call this (pure Python is the expected
+    behaviour without the ``jit`` extra), and ``reason=None`` is a no-op.
+    """
+    global _jit_unavailable_notified
+    if _jit_unavailable_notified or reason is None:
+        return
+    _jit_unavailable_notified = True
+    warnings.warn(
+        "MNiShed is using the pure-Python time loop (~100x slower than the "
+        f"Numba JIT): {reason}.",
+        UserWarning, stacklevel=3)
 
 
 if _numba_available:
@@ -2258,6 +2293,23 @@ class Buckets(object):
             and all(r.pdm_H0 is None for r in self.reservoirs)
             and not self.use_et_water_stress
         )
+
+        # Surface a slow pure-Python fallback once, so it is not silent: either
+        # numba is installed but broken, or this config disables the JIT. A
+        # plain "numba not installed" stays quiet (pure Python is expected).
+        if not _can_jit:
+            if _numba_available:
+                _reason = (
+                    "a PDM reservoir (pdm_H0) is configured"
+                    if any(r.pdm_H0 is not None for r in self.reservoirs)
+                    else "et_water_stress is enabled")
+                _notify_jit_unavailable(
+                    _reason + ", which the Numba JIT does not yet support")
+            elif _numba_import_error is not None:
+                _notify_jit_unavailable(
+                    f"numba is installed but failed to import "
+                    f"({_numba_import_error}), usually a NumPy/Numba version "
+                    "mismatch (the mnished[jit] extra pins numpy<2.3)")
 
         if _can_jit:
             _idx = _run_idx if _run_idx is not None else self.hydrodata.index
