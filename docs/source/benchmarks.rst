@@ -9,17 +9,15 @@ that loop, enabled with the ``jit`` extra (see :doc:`installation`).
 When the JIT is used
 ~~~~~~~~~~~~~~~~~~~~~
 
-The JIT runs when Numba is importable *and* the configuration uses only the
-mechanics the compiled loop implements. It is **not** used — the pure-Python
-loop runs instead — in these cases:
+The compiled loop covers the full daily model — including PDM saturation-excess
+(``pdm_H0``) and ``et_water_stress`` — so the JIT runs whenever Numba is
+importable. The pure-Python loop runs instead only when Numba is unavailable:
 
 * Numba is not installed (the default without the ``jit`` extra).
 * Numba is installed but fails to import — most often a NumPy/Numba version
   mismatch (the ``jit`` extra pins ``numpy<2.3`` to avoid this).
-* The configuration uses **PDM** saturation-excess (``pdm_H0``) or
-  **et_water_stress**, which the JIT does not yet implement.
 
-In the latter two cases MNiShed emits a one-time ``UserWarning`` from the first
+In the second case MNiShed emits a one-time ``UserWarning`` from the first
 :meth:`~mnished.Buckets.run`, so a silent ~100× slowdown is not a surprise.
 (A plain "Numba not installed" stays quiet, since pure Python is the expected
 default without the extra.) The pure-Python and JIT loops are verified to

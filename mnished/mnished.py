@@ -81,16 +81,17 @@ if _numba_available:
                  tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
                  leakance_R_arr, H_threshold_arr, Hmax_arr,
                  f_tile_arr, tau_tile_arr, H_tile_init,
-                 multipath_thr_arr, multipath_tau_arr,
+                 multipath_thr_arr, multipath_tau_arr, pdm_H0_arr,
                  melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
                  direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
                  has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
-                 use_direct_runoff, has_trange):
+                 use_direct_runoff, use_et_water_stress, has_trange):
         """JIT-compiled daily time loop replacing Buckets.run()/update().
 
         Replicates update()/_advance_sub_catchment()/_compute_snowpack()/
-        _update_fgi()/_draw_et_from_reservoirs() exactly for the common case
-        (no PDM, no et_water_stress).  Falls back to the Python loop otherwise.
+        _update_fgi()/_draw_et_from_reservoirs() exactly.  PDM saturation-excess
+        (``pdm_H0_arr`` > 0) and et_water_stress (``use_et_water_stress``) are
+        both supported; ``pdm_H0_arr[r] <= 0`` disables PDM for reservoir *r*.
 
         Parallel sub-catchments are flattened into the per-reservoir arrays;
         ``sc_start_idx[k]``/``sc_end_idx[k]`` give the half-open reservoir-index
@@ -178,6 +179,14 @@ if _numba_available:
                 fgi_cur    = fgi[sc]
                 H_dc_sc    = H_dc[sc]
 
+                # et_water_stress: scale ET demand by shallow-reservoir wetness
+                # (PDM saturation CDF of the sub-catchment's top reservoir).
+                if use_et_water_stress and pdm_H0_arr[r_start] > 0.0:
+                    _h_shallow = H_res[r_start] if H_res[r_start] > 0.0 else 0.0
+                    _et_stress = 1.0 - math.exp(-_h_shallow / pdm_H0_arr[r_start])
+                else:
+                    _et_stress = 1.0
+
                 # ── Snowpack ──────────────────────────────────────────────
                 sp_infiltrated = 0.0
                 sp_deficit     = 0.0
@@ -187,7 +196,7 @@ if _numba_available:
                     if use_et_reservoir_draw:
                         sp_recharge = P_t + H_dc_sc
                     else:
-                        sp_recharge = P_t - ET_t + H_dc_sc
+                        sp_recharge = P_t - ET_t * _et_stress + H_dc_sc
 
                     # Snowpack.recharge(sp_recharge)
                     if sp_recharge >= 0.0:
@@ -269,7 +278,8 @@ if _numba_available:
                             if use_et_reservoir_draw:
                                 _rech = P_t + H_deficit_carry_for_res0
                             else:
-                                _rech = P_t - ET_t + H_deficit_carry_for_res0
+                                _rech = (P_t - ET_t * _et_stress
+                                         + H_deficit_carry_for_res0)
 
                         if use_direct_runoff and _rech > 0.0:
                             q_direct = _rech * direct_runoff_fraction
@@ -277,6 +287,14 @@ if _numba_available:
                             _rech   -= q_direct
                     else:
                         _rech = H_to_next[r - 1] + H_deficit_res[r - 1]
+
+                    # PDM: shed the saturated fraction of positive recharge as
+                    # saturation-excess overland flow before storage (exp CDF of
+                    # storage capacities; mutually exclusive with a finite Hmax).
+                    if pdm_H0_arr[r] > 0.0 and _rech > 0.0:
+                        _f_sat = 1.0 - math.exp(-H_res[r] / pdm_H0_arr[r])
+                        H_res_excess = _f_sat * _rech
+                        _rech        = (1.0 - _f_sat) * _rech
 
                     new_H = H_res[r] + _rech
                     if new_H < 0.0:
@@ -2286,30 +2304,18 @@ class Buckets(object):
             for _col in self._depth_column_names():
                 self.hydrodata[_col] = pd.NA
 
-        # JIT path: available when numba is installed, no PDM,
-        # and no et_water_stress (which requires pdm_H0 logic not in the JIT).
-        _can_jit = (
-            _numba_available
-            and all(r.pdm_H0 is None for r in self.reservoirs)
-            and not self.use_et_water_stress
-        )
+        # JIT path: available whenever numba imported successfully. PDM
+        # (pdm_H0) and et_water_stress are both supported by the compiled loop.
+        _can_jit = _numba_available
 
-        # Surface a slow pure-Python fallback once, so it is not silent: either
-        # numba is installed but broken, or this config disables the JIT. A
-        # plain "numba not installed" stays quiet (pure Python is expected).
-        if not _can_jit:
-            if _numba_available:
-                _reason = (
-                    "a PDM reservoir (pdm_H0) is configured"
-                    if any(r.pdm_H0 is not None for r in self.reservoirs)
-                    else "et_water_stress is enabled")
-                _notify_jit_unavailable(
-                    _reason + ", which the Numba JIT does not yet support")
-            elif _numba_import_error is not None:
-                _notify_jit_unavailable(
-                    f"numba is installed but failed to import "
-                    f"({_numba_import_error}), usually a NumPy/Numba version "
-                    "mismatch (the mnished[jit] extra pins numpy<2.3)")
+        # Surface a slow pure-Python fallback once, so it is not silent — but
+        # only for an installed-but-broken numba; a plain "numba not installed"
+        # stays quiet (pure Python is the expected default without the extra).
+        if not _can_jit and _numba_import_error is not None:
+            _notify_jit_unavailable(
+                f"numba is installed but failed to import "
+                f"({_numba_import_error}), usually a NumPy/Numba version "
+                "mismatch (the mnished[jit] extra pins numpy<2.3)")
 
         if _can_jit:
             _idx = _run_idx if _run_idx is not None else self.hydrodata.index
@@ -2377,6 +2383,8 @@ class Buckets(object):
                           for r in self.reservoirs], dtype=np.float64),
                 np.array([r.multipath_timescale if r.has_multipath else 0.0
                           for r in self.reservoirs], dtype=np.float64),
+                np.array([r.pdm_H0 if r.pdm_H0 is not None else 0.0
+                          for r in self.reservoirs], dtype=np.float64),
                 self.melt_factor if self.has_snowpack else 1.0,
                 self.snow_insulation_k,
                 self.fgi_decay_coeff,
@@ -2391,6 +2399,7 @@ class Buckets(object):
                 self.use_rain_on_snow,
                 self.use_et_reservoir_draw,
                 self.use_direct_runoff,
+                self.use_et_water_stress,
                 self._has_trange,
             )
             self.hydrodata.loc[_idx, 'Specific Discharge (modeled) [mm/day]'] = _Q

@@ -299,6 +299,96 @@ def test_jit_matches_pure_python_advanced(tmp_path, monkeypatch):
     np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
 
 
+def _jit_vs_python(tmp_path, cfg, extra=None):
+    """Run a config under the JIT and forced pure-Python; return (q, s) pairs.
+
+    ``extra`` is an optional callable applied to the Buckets after initialize
+    (e.g. to set run_and_score-only attributes).
+    """
+    import yaml
+    import mnished
+    import mnished.mnished as _m
+    cfg_path = tmp_path / "cfg.yml"
+    cfg_path.write_text(yaml.safe_dump(cfg))
+    q_col = "Specific Discharge (modeled) [mm/day]"
+    s_col = "Subsurface storage (modeled total) [mm]"
+
+    b_jit = mnished.Buckets()
+    b_jit.initialize(str(cfg_path))
+    if extra:
+        extra(b_jit)
+    b_jit.run()
+
+    import pytest as _pytest
+    with _pytest.MonkeyPatch().context() as mp:
+        mp.setattr(_m, "_numba_available", False)
+        b_py = mnished.Buckets()
+        b_py.initialize(str(cfg_path))
+        if extra:
+            extra(b_py)
+        b_py.run()
+
+    return (b_jit.hydrodata[q_col].astype(float).to_numpy(),
+            b_py.hydrodata[q_col].astype(float).to_numpy(),
+            b_jit.hydrodata[s_col].astype(float).to_numpy(),
+            b_py.hydrodata[s_col].astype(float).to_numpy())
+
+
+def test_jit_matches_pure_python_pdm(tmp_path):
+    """JIT and pure-Python agree with PDM saturation-excess (pdm_H0) active."""
+    pytest.importorskip("numba", exc_type=ImportError)
+    cfg = {
+        'timeseries': {'datafile': os.path.join(EXAMPLE_DIR, "CannonTestInput.csv")},
+        'initial_conditions': {
+            'water_reservoir_effective_depths__mm': [15, 500],
+            'snowpack__mm_SWE': 0},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 1},
+        'reservoirs': {
+            'recession_coefficients': [14, 500],
+            'exfiltration_fractions': [0.4, 1.0],
+            'maximum_effective_depths__mm': [float('inf'), float('inf')],
+            'pdm_H0__mm': [30.0, None]},        # PDM on the shallow reservoir
+        'snowmelt': {'PDD_melt_factor': 1.0, 'fgi_decay_coeff': 0.97,
+                     'snow_insulation_k': 0.0},
+        'modules': {'snowpack': True, 'frozen_ground': True,
+                    'rain_on_snow': True, 'direct_runoff': False},
+    }
+    q_jit, q_py, s_jit, s_py = _jit_vs_python(tmp_path, cfg)
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+    np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+
+
+def test_jit_matches_pure_python_et_water_stress(tmp_path):
+    """JIT and pure-Python agree with et_water_stress (PDM-CDF ET scaling)."""
+    pytest.importorskip("numba", exc_type=ImportError)
+    cfg = {
+        'timeseries': {'datafile': os.path.join(EXAMPLE_DIR, "CannonTestInput.csv")},
+        'initial_conditions': {
+            'water_reservoir_effective_depths__mm': [15, 500],
+            'snowpack__mm_SWE': 0},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 1},
+        'reservoirs': {
+            'recession_coefficients': [14, 500],
+            'exfiltration_fractions': [0.4, 1.0],
+            'maximum_effective_depths__mm': [float('inf'), float('inf')],
+            'pdm_H0__mm': [30.0, None]},        # stress factor uses res-0 pdm_H0
+        'snowmelt': {'PDD_melt_factor': 1.0, 'fgi_decay_coeff': 0.97,
+                     'snow_insulation_k': 0.0},
+        'modules': {'snowpack': True, 'frozen_ground': True,
+                    'rain_on_snow': True, 'direct_runoff': False,
+                    'et_water_stress': True},
+    }
+    q_jit, q_py, s_jit, s_py = _jit_vs_python(tmp_path, cfg)
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+    np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+
+
 # ---------------------------------------------------------------------------
 # ET reservoir draw: condensation respects Hmax
 # ---------------------------------------------------------------------------

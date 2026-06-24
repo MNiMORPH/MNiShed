@@ -24,16 +24,19 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   snowpack, frozen-ground index, carried deficit) across decade windows:
   `final_states` / `initial_states` are nested per sub-catchment when there
   are several, and stay flat/scalar for a single sub-catchment.
+- The Numba JIT now covers **PDM saturation-excess** (`pdm_H0`) and
+  **`et_water_stress`**; those configurations previously fell back to the
+  pure-Python loop. The JIT and pure-Python loops remain verified-identical, so
+  the JIT is now used for every supported configuration whenever Numba is
+  importable.
 
 ### Changed
 
 - The pure-Python time-loop fallback is no longer silent. `Buckets.run()` emits
-  a one-time `UserWarning` when it falls back for a reason worth surfacing —
-  Numba installed but failing to import (usually a NumPy/Numba version
-  mismatch), or a configuration the JIT does not support (`pdm_H0`,
-  `et_water_stress`) — so an unexpected ~100× slowdown is visible. A plain
-  "Numba not installed" stays quiet, since pure Python is the expected default
-  without the `jit` extra.
+  a one-time `UserWarning` when Numba is installed but fails to import (usually
+  a NumPy/Numba version mismatch), so an unexpected ~100× slowdown is visible.
+  A plain "Numba not installed" stays quiet, since pure Python is the expected
+  default without the `jit` extra.
 
 ### Deprecated
 

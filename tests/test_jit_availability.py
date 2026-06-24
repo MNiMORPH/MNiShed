@@ -1,11 +1,11 @@
 """
-The pure-Python time-loop fallback is no longer silent.
+The pure-Python time-loop fallback is not silent when it matters.
 
 Buckets.run() warns once per process when it falls back to the pure-Python loop
-for a reason worth surfacing: numba installed but failing to import, or a
-configuration the JIT does not support (PDM, et_water_stress). A plain "numba
-not installed" stays quiet — pure Python is the expected default without the
-``jit`` extra.
+because Numba is installed but fails to import (most often a NumPy/Numba version
+mismatch). A plain "Numba not installed" stays quiet — pure Python is the
+expected default without the ``jit`` extra. (PDM and et_water_stress are
+JIT-supported, so they no longer trigger a fallback notice.)
 
 These tests drive the notice by monkeypatching the module-level numba state, so
 they are deterministic regardless of whether numba is installed in the test
@@ -60,31 +60,16 @@ def _pure_python_warnings(record):
     return [w for w in record if "pure-Python" in str(w.message)]
 
 
-def test_et_water_stress_notifies_when_numba_available(tmp_path, monkeypatch):
-    monkeypatch.setattr(M, "_numba_available", True)
-    monkeypatch.setattr(M, "_numba_import_error", None)
-    monkeypatch.setattr(M, "_jit_unavailable_notified", False)
-    b = _buckets(tmp_path)
-    b.use_et_water_stress = True
-    with pytest.warns(UserWarning, match="pure-Python.*et_water_stress"):
-        b.run()
-
-
-def test_pdm_notifies_when_numba_available(tmp_path, monkeypatch):
-    monkeypatch.setattr(M, "_numba_available", True)
-    monkeypatch.setattr(M, "_numba_import_error", None)
-    monkeypatch.setattr(M, "_jit_unavailable_notified", False)
-    b = _buckets(tmp_path)
-    b.reservoirs[0].pdm_H0 = 50.0
-    with pytest.warns(UserWarning, match="pure-Python.*pdm_H0"):
-        b.run()
-
-
-def test_installed_but_broken_numba_notifies(tmp_path, monkeypatch):
+def _set_broken_numba(monkeypatch):
+    """Simulate numba installed but failing to import (e.g. NumPy too new)."""
     monkeypatch.setattr(M, "_numba_available", False)
     monkeypatch.setattr(M, "_numba_import_error",
                         ImportError("Numba needs NumPy 2.2 or less"))
     monkeypatch.setattr(M, "_jit_unavailable_notified", False)
+
+
+def test_installed_but_broken_numba_notifies(tmp_path, monkeypatch):
+    _set_broken_numba(monkeypatch)
     b = _buckets(tmp_path)
     with pytest.warns(UserWarning, match="failed to import"):
         b.run()
@@ -103,11 +88,8 @@ def test_numba_not_installed_is_silent(tmp_path, monkeypatch):
 
 
 def test_notice_fires_at_most_once_per_process(tmp_path, monkeypatch):
-    monkeypatch.setattr(M, "_numba_available", True)
-    monkeypatch.setattr(M, "_numba_import_error", None)
-    monkeypatch.setattr(M, "_jit_unavailable_notified", False)
+    _set_broken_numba(monkeypatch)
     b = _buckets(tmp_path)
-    b.use_et_water_stress = True
     with pytest.warns(UserWarning, match="pure-Python"):
         b.run()                                   # first run: notifies
     with warnings.catch_warnings(record=True) as rec:
