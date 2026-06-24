@@ -5,6 +5,22 @@ All notable changes to this project are documented in this file.
 The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.1.0/),
 and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0.html).
 
+## [Unreleased]
+
+### Added
+
+- Parallel sub-catchments: a basin can be partitioned into spatially distinct
+  zones that drain to the same channel in parallel, each with its own
+  reservoir cascade and snowpack/frozen-ground state. Basin discharge and
+  storage are the area-weighted means over sub-catchments. Configure with a
+  `sub_catchments:` YAML block (each entry has a `name`, `area_fraction`, its
+  own `reservoirs` block, and optional `initial_conditions`); calibrate by
+  passing a `sub_catchments=[...]` argument to `run_and_score`. Supported on
+  both the pure-Python and Numba JIT time loops. A single sub-catchment of
+  area 1.0 reproduces the previous single-cascade behaviour exactly, so
+  existing configurations and calls are unchanged. New `SubCatchment` class
+  and `Buckets.sub_catchments` / `Buckets.n_sub_catchments`.
+
 ## [3.0.0] - 2026-06-23
 
 Major release. The library was renamed from **hydroRaVENS** to **MNiShed**,
