@@ -78,6 +78,63 @@ descriptions that follow are written for a single sub-catchment — when a basin
 defines only one, "the sub-catchment" and "the basin" coincide. See
 :ref:`sub-catchments-config` to configure a partitioned basin.
 
+.. _lakes:
+
+Lakes (open water)
+~~~~~~~~~~~~~~~~~~~
+
+A sub-catchment may instead be a **lake** (``kind: lake``): an open-water
+element rather than a soil column. It is a single storage :math:`H_\text{lake}`
+with a stage-driven outlet, fed by direct precipitation minus open-water
+evaporation, and is area-weighted into basin streamflow exactly like a land
+zone. Its balance per unit lake area is
+
+.. math::
+
+    \frac{\mathrm{d}H_\text{lake}}{\mathrm{d}t}
+        = P - E_\text{open} + \frac{Q_\text{gw}}{a_\text{lake}} - Q_\text{out},
+
+with three pieces of physics distinct from the soil cascade:
+
+* **Outlet.** A threshold power-law stage–discharge relation,
+  :math:`Q_\text{out} = a\,\max(H_\text{lake} - H_\text{sill},\,0)^{b}`, with
+  :math:`b = 5/3` by default (a Manning friction-controlled river outlet;
+  :math:`3/2` for a broad-crested-weir sill). Storage below :math:`H_\text{sill}`
+  is a **dead pool** that does not discharge but keeps exchanging
+  precipitation, evaporation, and groundwater.
+* **Open-water evaporation.** :math:`E_\text{open}` reuses the basin ET (the
+  global ``et_scale``), with no soil-moisture water-stress limit. There is no
+  separate Penman lake-ET term: at MNiShed's forcing resolution
+  (temperature, precipitation, photoperiod) a Penman open-water formulation is
+  collinear with the Thornthwaite land ET, so a distinct lake-ET module would
+  add parameter degeneracy rather than information.
+* **Groundwater exchange.** A bidirectional flux couples the lake to a land
+  sub-catchment's deepest reservoir (head :math:`h_s`),
+
+  .. math::
+
+      Q_\text{gw} = a_\text{sub}\,\operatorname{sign}(h_s - H_\text{lake})\,
+                    |h_s - H_\text{lake}|^{\,b_\text{sub}},
+
+  reusing that reservoir's own recession coefficient and exponent — so it adds
+  no calibrated parameter. The single signed term flips direction on its own:
+  the aquifer feeds the lake when :math:`h_s > H_\text{lake}` and the lake
+  recharges the aquifer when :math:`H_\text{lake} > h_s`, giving seasonal
+  store-and-release buffering. The transfer conserves volume across the
+  area-fraction difference (:math:`a_\text{land}\,\Delta H_\text{land} =
+  a_\text{lake}\,\Delta H_\text{lake}`).
+
+Because the model's storages are conceptual depths rather than surveyed water
+columns, :math:`H_\text{lake}` and :math:`H_\text{sill}` are conceptual, and the
+outlet coefficient :math:`a` is an *effective* parameter that absorbs the
+unknown translation from storage units to real stage and area — only the
+exponent :math:`b` and the evaporation scale carry direct physical priors. In
+this version the lake is hydrologically disconnected from channelized river
+inflow (``f_route_lake = 0``); routing basin runoff through the lake, and
+placing lakes in the drainage network from terrain data, are planned with the
+drainage-density / hydraulic-conductivity work. See :ref:`lake-config` to
+configure a lake.
+
 Optional Process Modules
 ~~~~~~~~~~~~~~~~~~~~~~~~~
 

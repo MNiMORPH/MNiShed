@@ -379,6 +379,100 @@ To calibrate a partitioned basin, pass a ``sub_catchments`` argument to
 config order) to override ``area_fraction`` and the per-reservoir parameters by
 position; snow and ET parameters remain basin-level.
 
+.. _lake-config:
+
+Lake (open-water) sub-catchments
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+A sub-catchment entry with ``kind: lake`` is an **open-water element** rather
+than a land zone. It is a single storage with a stage–discharge outlet, fed by
+direct precipitation minus open-water evaporation, and coupled to a land
+sub-catchment's deepest reservoir by a bidirectional groundwater exchange
+``Q_gw`` (the lake fills the aquifer when its stage is high and is fed by it when
+low). See :ref:`lakes` for the concept; ``DESIGN_lakes.md`` in the source tree
+holds the full derivation.
+
+.. code-block:: yaml
+
+    sub_catchments:
+      - name: uplands
+        area_fraction: 0.7
+        reservoirs:
+          recession_coefficients:        [14, 500]
+          exfiltration_fractions:        [0.3, 1.0]
+          maximum_effective_depths__mm:  [.inf, .inf]
+        initial_conditions:
+          water_reservoir_effective_depths__mm: [10, 350]
+      - name: lake
+        kind: lake
+        area_fraction: 0.3
+        lake:
+          outflow_coefficient: 0.05      # a in Q_out = a*(H - H_sill)^b
+          sill_storage__mm:    200.0     # H_sill (conceptual storage units)
+          outflow_exponent:    1.6667    # b; default 5/3 (Manning river outlet)
+          gw_partner:          uplands   # land zone for Q_gw (optional)
+          f_route_lake:        0.0       # v1: must be 0
+        initial_conditions:
+          lake_storage__mm:    250.0
+
+The ``lake`` block:
+
+.. list-table::
+   :widths: 28 12 60
+   :header-rows: 1
+
+   * - Key
+     - Type
+     - Description
+   * - ``outflow_coefficient``
+     - float
+     - Outlet coefficient :math:`a` in :math:`Q_\text{out} = a\,(H -
+       H_\text{sill})^b`. **Required, > 0.** A lumped *effective* coefficient,
+       not a bare Manning value: it absorbs the (unknown) translation from the
+       model's conceptual storage units to real water stage and surface area, so
+       its fitted value is not directly physically interpretable. Mapped onto
+       the lake reservoir as ``recession_coeff = 1/a``.
+   * - ``sill_storage__mm``
+     - float
+     - Outlet threshold :math:`H_\text{sill}` in conceptual storage units
+       (default 0). Storage below the sill is a dead pool: it does not
+       discharge but continues to exchange precipitation, evaporation, and
+       ``Q_gw``. Mapped onto the reservoir as ``H_threshold``.
+   * - ``outflow_exponent``
+     - float
+     - Stage–discharge exponent :math:`b` (default ``5/3``, a Manning
+       friction-controlled river outlet; ``3/2`` for a broad-crested-weir sill).
+       Fixed, not calibrated.
+   * - ``gw_partner``
+     - str
+     - Name of the land sub-catchment whose deepest reservoir exchanges water
+       with the lake via ``Q_gw``. Optional; if omitted and there is exactly one
+       land sub-catchment, that zone is used. With several land zones and no
+       name, the lake has no exchange (direct ``P - E`` and outlet only).
+   * - ``f_route_lake``
+     - float
+     - Fraction of basin runoff routed *through* the lake as channelized inflow.
+       **Must be 0 in this version** — the lake is hydrologically disconnected
+       from river inflow; channelized routing and lake network position are
+       planned with the drainage-density / Ksat work (issue #19).
+
+Notes:
+
+* A lake's ``area_fraction`` counts toward the basin sum of 1, like any
+  sub-catchment. It must contain exactly the one ``lake`` store (no
+  ``reservoirs`` block) and carries no snowpack or frozen-ground state.
+* Open-water evaporation reuses the basin ET (the global ``et_scale``); there is
+  no separate lake-ET formulation — at MNiShed's forcing resolution a Penman
+  open-water term would be collinear with Thornthwaite. See
+  :doc:`model_description`.
+* ``Q_gw`` reuses the partner reservoir's own recession coefficient and
+  exponent, so it adds no calibrated parameter and inherits any substrate-Ksat
+  prior on that reservoir.
+* Calibrate a lake through the ``sub_catchments`` override of
+  :func:`~mnished.calibration.run_and_score`: set the lake reservoir's
+  ``recession_coeff`` (:math:`= 1/a`) and ``H_threshold``
+  (:math:`= H_\text{sill}`); the ``5/3`` exponent stays fixed.
+
 The ``snowmelt`` section
 ~~~~~~~~~~~~~~~~~~~~~~~~
 

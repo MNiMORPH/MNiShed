@@ -7,6 +7,27 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Lake (open-water) sub-catchments: a `kind: lake` sub-catchment is a single
+  open-water store with a threshold power-law stage–discharge outlet
+  (`Q_out = a*(H - H_sill)^b`, `b = 5/3` by default), fed by direct
+  precipitation minus open-water evaporation (the basin `et_scale`; no separate
+  Penman lake-ET term). It is coupled to a land sub-catchment's deepest
+  reservoir by a bidirectional, volume-conserving groundwater exchange `Q_gw`
+  that reuses that reservoir's recession coefficient and exponent (no new
+  calibrated parameter) and flips direction with the head difference, giving
+  seasonal store-and-release buffering. Configure with a `lake:` block
+  (`outflow_coefficient`, `sill_storage__mm`, `outflow_exponent`, optional
+  `gw_partner`, `f_route_lake`); calibrate the outlet through the
+  `sub_catchments` override of `run_and_score` (lake `recession_coeff = 1/a`,
+  `H_threshold = H_sill`). Supported on both the pure-Python and Numba JIT time
+  loops (verified identical). In this version the lake is hydrologically
+  disconnected from channelized river inflow (`f_route_lake` must be 0); lake
+  network position and routed inflow are planned with the drainage-density /
+  hydraulic-conductivity work (MNiMORPH/MNiShed#19). New `Buckets.has_lake`;
+  basins without a lake are unchanged.
+
 ## [3.1.0] - 2026-06-24
 
 ### Added
