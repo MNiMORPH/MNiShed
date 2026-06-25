@@ -299,3 +299,71 @@ def test_gw_changes_lake_trajectory(tmp_path):
     h_on = on.sub_catchments[1].reservoirs[0].Hwater
     h_off = off.sub_catchments[2].reservoirs[0].Hwater
     assert h_on != pytest.approx(h_off)
+
+
+# ---------------------------------------------------------------------------
+# Calibration, mass balance, snowpack interaction
+# ---------------------------------------------------------------------------
+
+def _calib_cfg(tmp_path):
+    """Land + lake config with snowpack ON and observed discharge (Cannon),
+    written to disk for run_and_score / initialize()."""
+    cfg = {
+        'timeseries': {'datafile': CANNON_CSV},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 0},
+        'snowmelt': {'PDD_melt_factor': 1.0, 'fgi_decay_coeff': 0.97,
+                     'snow_insulation_k': 0.0},
+        'modules': {'snowpack': True, 'frozen_ground': True,
+                    'rain_on_snow': True, 'direct_runoff': False},
+        'sub_catchments': [
+            {'name': 'upland', 'area_fraction': 0.7,
+             'reservoirs': {'recession_coefficients': [14, 500],
+                            'exfiltration_fractions': [0.3, 1.0],
+                            'maximum_effective_depths__mm':
+                                [float('inf'), float('inf')]},
+             'initial_conditions': {
+                 'water_reservoir_effective_depths__mm': [15, 400]}},
+            {'name': 'lake', 'kind': 'lake', 'area_fraction': 0.3,
+             'lake': {'outflow_coefficient': 0.05, 'sill_storage__mm': 200.0},
+             'initial_conditions': {'lake_storage__mm': 250.0}}],
+    }
+    return _write(tmp_path, cfg)
+
+
+def test_lake_initializes_with_snowpack(tmp_path):
+    """A lake config with snowpack enabled must initialize (the lake carries no
+    snowpack; regression for the per-sub-catchment SWE-init loop)."""
+    b = mnished.Buckets()
+    b.initialize(_calib_cfg(tmp_path))
+    assert b.has_snowpack
+    assert b.sub_catchments[1].snowpack is None
+    b.run()   # must not raise
+    assert b.check_mass_balance() == pytest.approx(0.0, abs=1e-6)
+
+
+def test_lake_calibrates_via_sub_catchment_overrides(tmp_path):
+    """The lake outflow coefficient (a -> recession_coeff = 1/a) and sill
+    (H_threshold) calibrate through the existing per-sub-catchment override
+    path; the exponent stays fixed at 5/3."""
+    from mnished.calibration import _apply_reservoir_overrides
+    cfg_path = _calib_cfg(tmp_path)
+    res = mnished.run_and_score(
+        cfg_path, spin_up_cycles=1, metric='KGE',
+        sub_catchments=[{'recession_coeff': [12.0, 480.0]},
+                        {'recession_coeff': [1.0 / 0.08],
+                         'H_threshold': [180.0]}])
+    assert np.isfinite(res.score)
+
+    # The override reaches the lake reservoir and leaves b = 5/3 untouched.
+    b = mnished.Buckets()
+    b.initialize(cfg_path)
+    lake_res = b.sub_catchments[1].reservoirs[0]
+    _apply_reservoir_overrides(b.sub_catchments[1].reservoirs,
+                               {'recession_coeff': [1.0 / 0.08],
+                                'H_threshold': [180.0]})
+    assert lake_res.recession_coeff == pytest.approx(1.0 / 0.08)
+    assert lake_res.H_threshold == 180.0
+    assert lake_res.recession_exponent == pytest.approx(5.0 / 3.0)

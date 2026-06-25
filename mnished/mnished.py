@@ -1687,6 +1687,8 @@ class Buckets(object):
             if 'sub_catchments' in self.cfg:
                 for sc, sc_cfg in zip(self.sub_catchments,
                                       self.cfg['sub_catchments']):
+                    if sc.snowpack is None:      # lakes carry no snowpack
+                        continue
                     sc.snowpack.Hwater = sc_cfg.get('initial_conditions', {}).get(
                         'snowpack__mm_SWE', 0.0)
             else:
