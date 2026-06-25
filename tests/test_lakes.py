@@ -142,13 +142,17 @@ def test_lake_mass_balance_closes(tmp_path):
 
 
 def test_lake_dead_pool_holds_below_sill(tmp_path):
-    """With the sill unreachable, the lake never discharges above it; its
-    storage only reflects P - E (dead pool)."""
-    b = _init(tmp_path, [_land(0.99, recession=(14,), exfil=(1.0,),
-                               hmax=(float('inf'),), h0=(10,)),
-                         _lake(0.01, sill=1e6, h0=100.0)])
+    """With the sill unreachable, the lake never discharges above it. Two land
+    zones leave the lake partner ambiguous (no Q_gw), isolating the outlet."""
+    b = _init(tmp_path, [
+        _land(0.6, recession=(14,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(10,), name='a'),
+        _land(0.3, recession=(14,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(10,), name='b'),
+        _lake(0.1, sill=1e6, h0=100.0)])
+    assert b.sub_catchments[2].gw_partner is None
     b.run()
-    lake_res = b.sub_catchments[1].reservoirs[0]
+    lake_res = b.sub_catchments[2].reservoirs[0]
     # Never rose above the (unreachable) sill, so no over-sill discharge path.
     assert lake_res.Hwater < 1e6
     assert lake_res.H_discharge == pytest.approx(0.0)
@@ -181,3 +185,117 @@ def test_lake_area_counts_toward_basin_sum(tmp_path):
     """Lake area is part of the basin; land + lake must sum to 1."""
     with pytest.raises(ValueError):
         _init(tmp_path, [_land(0.7), _lake(0.5)])   # sums to 1.2
+
+
+# ---------------------------------------------------------------------------
+# Groundwater exchange Q_gw (bidirectional, lake <-> land subsurface)
+# ---------------------------------------------------------------------------
+
+def _isolated_exchange(tmp_path, h_s, H_lake, a_land=0.7, a_lake=0.3):
+    """A land + lake basin with the heads set and the sill unreachable (no
+    outlet), so a single _apply_lake_gw_exchange() isolates Q_gw."""
+    b = _init(tmp_path, [
+        _land(a_land, recession=(500,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(h_s,), name='L'),
+        _lake(a_lake, sill=1e9, h0=H_lake, name='lk')])
+    return b
+
+
+def test_gw_partner_auto_resolves_single_land(tmp_path):
+    b = _init(tmp_path, [_land(0.7), _lake(0.3)])
+    lake = b.sub_catchments[1]
+    assert lake.gw_partner is b.sub_catchments[0]
+
+
+def test_gw_partner_named(tmp_path):
+    b = _init(tmp_path, [
+        _land(0.4, name='till'), _land(0.3, name='clay'),
+        _lake(0.3, gw_partner='clay')])
+    assert b.sub_catchments[2].gw_partner.name == 'clay'
+
+
+def test_gw_partner_missing_raises(tmp_path):
+    with pytest.raises(ValueError):
+        _init(tmp_path, [_land(0.7), _lake(0.3, gw_partner='nope')])
+
+
+def test_gw_partner_cannot_be_a_lake(tmp_path):
+    with pytest.raises(ValueError):
+        _init(tmp_path, [_land(0.4), _lake(0.3, name='lk1'),
+                         _lake(0.3, name='lk2', gw_partner='lk1')])
+
+
+def test_gw_no_partner_when_ambiguous(tmp_path):
+    """Several land zones and no name given -> no exchange (partner None)."""
+    b = _init(tmp_path, [_land(0.4, name='a'), _land(0.3, name='b'),
+                         _lake(0.3)])
+    assert b.sub_catchments[2].gw_partner is None
+
+
+def test_gw_flows_into_lake_when_aquifer_higher(tmp_path):
+    b = _isolated_exchange(tmp_path, h_s=300.0, H_lake=100.0)
+    land, lake = b.sub_catchments[0].reservoirs[-1], b.sub_catchments[1].reservoirs[0]
+    b._apply_lake_gw_exchange()
+    assert land.Hwater < 300.0   # aquifer loses
+    assert lake.Hwater > 100.0   # lake gains
+
+
+def test_gw_flows_out_of_lake_when_lake_higher(tmp_path):
+    b = _isolated_exchange(tmp_path, h_s=100.0, H_lake=300.0)
+    land, lake = b.sub_catchments[0].reservoirs[-1], b.sub_catchments[1].reservoirs[0]
+    b._apply_lake_gw_exchange()
+    assert land.Hwater > 100.0   # aquifer gains
+    assert lake.Hwater < 300.0   # lake loses (sign flip from one term)
+
+
+@pytest.mark.parametrize("h_s,H_lake", [(300.0, 100.0), (100.0, 300.0)])
+def test_gw_conserves_volume(tmp_path, h_s, H_lake):
+    a_land, a_lake = 0.7, 0.3
+    b = _isolated_exchange(tmp_path, h_s, H_lake, a_land, a_lake)
+    land, lake = b.sub_catchments[0].reservoirs[-1], b.sub_catchments[1].reservoirs[0]
+    v0 = a_land * land.Hwater + a_lake * lake.Hwater
+    b._apply_lake_gw_exchange()
+    v1 = a_land * land.Hwater + a_lake * lake.Hwater
+    assert v1 == pytest.approx(v0, abs=1e-9)
+
+
+def test_gw_mass_balance_closes(tmp_path):
+    """Q_gw is internal; the basin mass balance still closes with it active."""
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, sill=200.0, h0=250.0)])
+    assert b.sub_catchments[1].gw_partner is not None
+
+    def storage():
+        return sum(sc.area_fraction * sum(r.Hwater for r in sc.reservoirs)
+                   for sc in b.sub_catchments)
+    s0 = storage()
+    b.run()
+    s1 = storage()
+    hd = b.hydrodata
+    P, ET, Qm = (_num(hd, 'Precipitation [mm/day]'),
+                 _num(hd, 'ET for model [mm/day]'), _num(hd, Q_COL))
+    mask = np.isfinite(Qm)
+    residual = np.nansum((P - ET)[mask]) - np.nansum(Qm[mask]) - (s1 - s0)
+    assert residual == pytest.approx(0.0, abs=1e-6)
+
+
+def test_gw_changes_lake_trajectory(tmp_path):
+    """Turning the exchange off (no partner) gives a different lake state than
+    leaving it on, with a large head contrast to drive exchange."""
+    common = dict(sill=1e9, h0=50.0)   # sill unreachable -> only P-E and Q_gw act
+    on = _init(tmp_path, [
+        _land(0.5, recession=(500,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(800,), name='a'),
+        _lake(0.5, name='lk', **common)])
+    off = _init(tmp_path, [
+        _land(0.4, recession=(500,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(800,), name='a'),
+        _land(0.1, recession=(500,), exfil=(1.0,), hmax=(float('inf'),),
+              h0=(0,), name='b'),     # second land zone -> lake partner ambiguous -> off
+        _lake(0.5, name='lk', **common)])
+    assert on.sub_catchments[1].gw_partner is not None
+    assert off.sub_catchments[2].gw_partner is None
+    on.run()
+    off.run()
+    h_on = on.sub_catchments[1].reservoirs[0].Hwater
+    h_off = off.sub_catchments[2].reservoirs[0].Hwater
+    assert h_on != pytest.approx(h_off)

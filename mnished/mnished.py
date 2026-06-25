@@ -1443,6 +1443,42 @@ class Buckets(object):
         _lake._gw_partner_name = _lk.get('gw_partner')
         return _lake
 
+    def _resolve_lake_partners(self):
+        """
+        Resolve each lake's groundwater-exchange partner to a land sub-catchment.
+
+        The bidirectional exchange ``Q_gw`` runs against the partner land
+        sub-catchment's deepest reservoir (its subsurface head ``h_s``). The
+        partner is named by ``lake.gw_partner`` in the config; if omitted and
+        there is exactly one land sub-catchment, that land zone is used (the
+        unambiguous v1 case). With several land zones and no name given, the
+        lake has no exchange (direct ``P - E`` and outlet only).
+
+        Raises
+        ------
+        ValueError
+            If a named partner is missing or is itself a lake.
+        """
+        _by_name = {sc.name: sc for sc in self.sub_catchments}
+        _land = [sc for sc in self.sub_catchments if sc.kind == 'land']
+        for lake in self.sub_catchments:
+            if lake.kind != 'lake':
+                continue
+            _name = getattr(lake, '_gw_partner_name', None)
+            if _name is None:
+                lake.gw_partner = _land[0] if len(_land) == 1 else None
+                continue
+            if _name not in _by_name:
+                raise ValueError(
+                    f"Lake '{lake.name}': gw_partner '{_name}' is not a "
+                    "sub-catchment in this basin.")
+            _partner = _by_name[_name]
+            if _partner.kind != 'land':
+                raise ValueError(
+                    f"Lake '{lake.name}': gw_partner '{_name}' must be a land "
+                    "sub-catchment, not a lake.")
+            lake.gw_partner = _partner
+
     def initialize(self, config_file=None, enforce_water_balance=None):
         """
         Set up the model from a YAML configuration file.
@@ -1519,6 +1555,9 @@ class Buckets(object):
                     'water_reservoir_effective_depths__mm'])
             self.sub_catchments = [
                 SubCatchment('basin', 1.0, _basin_reservoirs)]
+        # Resolve any lake groundwater-exchange partners now that every
+        # sub-catchment exists.
+        self._resolve_lake_partners()
         # Total reservoir count across all sub-catchments (informational;
         # equals the legacy single-cascade length when there is one sub-catchment).
         self.n_reservoirs = len(self.reservoirs)
@@ -2250,6 +2289,60 @@ class Buckets(object):
         res.discharge(self.dt)
         return res.H_discharge
 
+    def _apply_lake_gw_exchange(self):
+        """
+        Apply the bidirectional lake <-> land-subsurface groundwater exchange.
+
+        For each lake with a resolved partner, transfer water between the lake
+        store ``H_lake`` and the partner land sub-catchment's deepest reservoir
+        ``h_s``, driven by the head difference ``Δh = h_s - H_lake`` on the
+        partner's own recession law (same coefficient and exponent as its
+        subsurface-to-stream drainage), made bidirectional:
+
+            rate = sign(Δh) * |Δh|^b_sub / τ_eff   [mm/day, land-area specific],
+            τ_eff = recession_coeff * recession_H_ref^(b_sub - 1).
+
+        Explicit (start-of-step heads), capped at |Δh| (no overshoot past
+        equalization) and at the donor's available storage. The transfer
+        conserves *volume*: the depth removed from the land reservoir (per unit
+        land area) and the depth added to the lake (per unit lake area) are
+        scaled by the area-fraction ratio so that
+        ``a_land * dH_land = a_lake * dH_lake``. ``Q_gw`` is internal and nets
+        to zero in the basin water budget. Reusing the partner's recession
+        parameters means the exchange carries no new calibrated parameter and
+        inherits the substrate-Ksat constraint. See ``DESIGN_lakes.md``.
+        """
+        for lake in self.sub_catchments:
+            if lake.kind != 'lake' or lake.gw_partner is None:
+                continue
+            partner  = lake.gw_partner
+            gw_res   = partner.reservoirs[-1]     # land subsurface head h_s
+            lake_res = lake.reservoirs[0]         # lake store H_lake
+            dh = gw_res.Hwater - lake_res.Hwater
+            if dh == 0.0:
+                continue
+            b       = gw_res.recession_exponent
+            tau_eff = gw_res.recession_coeff * gw_res.recession_H_ref ** (b - 1.0)
+            a_land, a_lake = partner.area_fraction, lake.area_fraction
+            # Land-area-specific exchange depth this step (signed: + = into
+            # lake), capped at |Δh| so a single step cannot overshoot past
+            # equalization.
+            dH_land = np.sign(dh) * abs(dh) ** b / tau_eff * self.dt
+            dH_land = min(dH_land, dh) if dh > 0.0 else max(dH_land, dh)
+            dH_lake = dH_land * a_land / a_lake   # volume-conserving conversion
+            # Clamp the donor to its available storage *in its own units*, then
+            # derive the receiver from the clamped value (the receiver only
+            # gains, so it cannot go negative). This avoids a round-trip
+            # area-ratio rounding overshoot.
+            if dH_land > gw_res.Hwater:           # aquifer is donor and runs dry
+                dH_land = gw_res.Hwater
+                dH_lake = dH_land * a_land / a_lake
+            elif -dH_lake > lake_res.Hwater:      # lake is donor and runs dry
+                dH_lake = -lake_res.Hwater
+                dH_land = dH_lake * a_lake / a_land
+            gw_res.Hwater   -= dH_land
+            lake_res.Hwater += dH_lake
+
     def update(self, time_step=None):
         """
         Advance the model by one time step.
@@ -2298,6 +2391,12 @@ class Buckets(object):
             self._flux_tile = np.nan
             self._flux_multipath = np.nan
             return
+
+        # Lake <-> land-subsurface groundwater exchange, applied first using
+        # start-of-step heads (operator splitting), before the compartments
+        # advance their own dynamics.
+        if self.has_lake:
+            self._apply_lake_gw_exchange()
 
         qi             = 0.0
         swe            = 0.0
