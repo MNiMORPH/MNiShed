@@ -410,8 +410,8 @@ holds the full derivation.
           outflow_coefficient: 0.05      # a in Q_out = a*(H - H_sill)^b
           sill_storage__mm:    200.0     # H_sill (conceptual storage units)
           outflow_exponent:    1.6667    # b; default 5/3 (Manning river outlet)
-          gw_partner:          uplands   # land zone for Q_gw (optional)
-          f_route_lake:        0.0       # v1: must be 0
+          gw_partner:          uplands   # land zone for Q_gw and routing source
+          f_route_lake:        0.9       # data-derived fraction routed via the lake
         initial_conditions:
           lake_storage__mm:    250.0
 
@@ -451,10 +451,16 @@ The ``lake`` block:
        name, the lake has no exchange (direct ``P - E`` and outlet only).
    * - ``f_route_lake``
      - float
-     - Fraction of basin runoff routed *through* the lake as channelized inflow.
-       **Must be 0 in this version** — the lake is hydrologically disconnected
-       from river inflow; channelized routing and lake network position are
-       planned with the drainage-density / Ksat work (issue #19).
+     - Fraction (in ``[0, 1]``) of the partner land zone's discharge routed
+       *through* the lake as channelized inflow, instead of reaching the gauge
+       directly. The routed water enters lake storage the same step (no channel
+       lag) and is buffered by the lake outlet. **Data-derived, not calibrated**
+       — set it from the lake's position in the drainage network and the
+       contributing-area fraction draining into it. ``0`` (default) leaves the
+       lake disconnected from river inflow (e.g. a terminal/closed lake);
+       requires a ``gw_partner`` when ``> 0`` (that land zone is the routing
+       source). A land zone's total routed-away fraction across the lakes it
+       feeds may not exceed 1.
 
 Notes:
 

@@ -22,11 +22,20 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `gw_partner`, `f_route_lake`); calibrate the outlet through the
   `sub_catchments` override of `run_and_score` (lake `recession_coeff = 1/a`,
   `H_threshold = H_sill`). Supported on both the pure-Python and Numba JIT time
-  loops (verified identical). In this version the lake is hydrologically
-  disconnected from channelized river inflow (`f_route_lake` must be 0); lake
-  network position and routed inflow are planned with the drainage-density /
-  hydraulic-conductivity work (MNiMORPH/MNiShed#19). New `Buckets.has_lake`;
-  basins without a lake are unchanged.
+  loops (verified identical). New `Buckets.has_lake`; basins without a lake are
+  unchanged.
+- Channelized routing through a lake (`f_route_lake` in `[0, 1]`): a fraction of
+  the partner land zone's discharge is routed through the lake — buffered by its
+  outlet and re-released — instead of reaching the gauge directly, so the land
+  cascade no longer has to fake slow release by stretching its recession
+  timescale. The transfer is instantaneous (no channel lag, buffered by lake
+  storage); `update()` runs two passes (land, then lakes) so a lake sees its
+  partner's current-step discharge. `f_route_lake` is data-derived (lake network
+  position), never calibrated; `0` (default) keeps the lake disconnected
+  (terminal/closed lake). Supported on the pure-Python and JIT loops (verified
+  identical). Automatically deriving `f_route_lake` and lake network position
+  from terrain remains planned with the drainage-density / hydraulic-conductivity
+  work (MNiMORPH/MNiShed#19).
 
 ## [3.1.0] - 2026-06-24
 

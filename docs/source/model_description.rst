@@ -92,9 +92,11 @@ zone. Its balance per unit lake area is
 .. math::
 
     \frac{\mathrm{d}H_\text{lake}}{\mathrm{d}t}
-        = P - E_\text{open} + \frac{Q_\text{gw}}{a_\text{lake}} - Q_\text{out},
+        = P - E_\text{open} + \frac{Q_\text{gw}}{a_\text{lake}}
+          + f_\text{route}\,\frac{a_\text{land}}{a_\text{lake}}\,Q_\text{land}
+          - Q_\text{out},
 
-with three pieces of physics distinct from the soil cascade:
+with four pieces of physics distinct from the soil cascade:
 
 * **Outlet.** A threshold power-law stage–discharge relation,
   :math:`Q_\text{out} = a\,\max(H_\text{lake} - H_\text{sill},\,0)^{b}`, with
@@ -123,17 +125,37 @@ with three pieces of physics distinct from the soil cascade:
   store-and-release buffering. The transfer conserves volume across the
   area-fraction difference (:math:`a_\text{land}\,\Delta H_\text{land} =
   a_\text{lake}\,\Delta H_\text{lake}`).
+* **Channelized routing.** A fraction :math:`f_\text{route}` of the partner land
+  zone's discharge :math:`Q_\text{land}` is routed *through* the lake instead of
+  reaching the gauge directly: the lake gains
+  :math:`f_\text{route}\,(a_\text{land}/a_\text{lake})\,Q_\text{land}` as inflow
+  and that zone's contribution to basin streamflow is scaled by
+  :math:`(1-f_\text{route})`. The transfer is **instantaneous** — there is no
+  channel-travel lag — and it enters lake storage *before* the outlet step, so
+  the lake takes immediate control of the water but releases it only through its
+  stage–discharge law; the delay is provided by storage, not by the transfer.
+  This is what lets the land cascade shed its storm discharge with the right
+  buffering instead of counterfeiting slow release by stretching its recession
+  timescale. Within a step the order is groundwater exchange, then routed
+  inflow, then the outlet. :math:`f_\text{route}` is **data-derived** (the lake's
+  position in the drainage network and the contributing-area fraction draining
+  into it), never calibrated; :math:`f_\text{route} = 0` leaves the lake fed only
+  by direct precipitation and :math:`Q_\text{gw}` (the appropriate setting for a
+  terminal/closed lake). Channelized routing is a *distinct* mechanism from the
+  soil cascade's ``multipath`` fast pathway (an engineered tile-drain
+  representation): a lake buffers and re-releases routed surface water through an
+  open-water outlet, whereas ``multipath`` is a threshold-activated fast drain
+  within a soil reservoir. The two should not be substituted for one another.
 
 Because the model's storages are conceptual depths rather than surveyed water
 columns, :math:`H_\text{lake}` and :math:`H_\text{sill}` are conceptual, and the
 outlet coefficient :math:`a` is an *effective* parameter that absorbs the
 unknown translation from storage units to real stage and area — only the
-exponent :math:`b` and the evaporation scale carry direct physical priors. In
-this version the lake is hydrologically disconnected from channelized river
-inflow (``f_route_lake = 0``); routing basin runoff through the lake, and
-placing lakes in the drainage network from terrain data, are planned with the
-drainage-density / hydraulic-conductivity work. See :ref:`lake-config` to
-configure a lake.
+exponent :math:`b` and the evaporation scale carry direct physical priors.
+Automatically placing lakes in the drainage network and deriving
+:math:`f_\text{route}` from terrain are planned with the drainage-density /
+hydraulic-conductivity work; for now :math:`f_\text{route}` is supplied per lake
+from data. See :ref:`lake-config` to configure a lake.
 
 Optional Process Modules
 ~~~~~~~~~~~~~~~~~~~~~~~~~
