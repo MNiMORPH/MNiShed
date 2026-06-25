@@ -320,6 +320,9 @@ constant.  See :ref:`Mean Residence Time <mean-residence-time>` in
 This tutorial builds a single-cascade model — one hydraulic zone. A basin with
 spatially distinct zones can be split into parallel sub-catchments, each its own
 cascade; see :ref:`sub-catchments-config` and :ref:`parallel-sub-catchments`.
+Open water is a special sub-catchment (``kind: lake``) with a stage-driven
+outlet, a groundwater exchange, and optional channelized routing; see
+:ref:`lakes` and :ref:`lake-config`.
 
 See Also
 --------

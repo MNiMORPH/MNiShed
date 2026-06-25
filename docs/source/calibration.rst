@@ -282,6 +282,41 @@ the AIC, plus ``n_sub_catchments − 1`` when the area fractions are calibrated.
 Because ``final_states`` carries each zone's storage separately, decade chaining
 (below) works unchanged for a partitioned basin.
 
+Calibrating a lake
+^^^^^^^^^^^^^^^^^^
+
+A lake sub-catchment (see :ref:`lake-config`) calibrates through the same
+``sub_catchments`` override.  Its outlet is the lake reservoir's
+``recession_coeff`` and ``H_threshold``, so the two free lake parameters map as
+
+* outlet coefficient :math:`a` → ``recession_coeff`` :math:`= 1/a`
+  (small :math:`a` = slow outlet = large ``recession_coeff``; set bounds in
+  ``recession_coeff`` space accordingly), and
+* sill :math:`H_\text{sill}` → ``H_threshold``.
+
+.. code-block:: python
+
+    result = run_and_score(
+        'crow_wing.yml',
+        et_scale=0.6,                  # basin-level; keep free for lake-rich basins
+        sub_catchments=[
+            {'recession_coeff': [100],          # land cascade
+             'multipath_threshold': [50.0], 'multipath_timescale': [5.0]},
+            {'recession_coeff': [1 / 0.05],     # lake: a = 0.05
+             'H_threshold': [200.0]},           # lake: H_sill = 200 mm
+        ],
+    )
+
+The outlet exponent :math:`b` stays fixed at its config value (``5/3`` by
+default) — it is not exposed to the override.  The bidirectional groundwater
+exchange :math:`Q_\text{gw}` adds **no** calibrated parameter: it reuses the
+partner land reservoir's own ``recession_coeff`` / ``recession_exponent``, so it
+tracks the substrate you are already fitting.  ``f_route_lake`` is **not**
+calibrated — set it from data in the YAML (lake position in the drainage
+network).  Open-water evaporation likewise has no separate knob; it reuses the
+basin ``et_scale``.  So a lake adds at most two free parameters (:math:`a`,
+:math:`H_\text{sill}`) to the calibration.
+
 Chaining decade runs
 ^^^^^^^^^^^^^^^^^^^^
 
