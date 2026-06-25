@@ -1,0 +1,183 @@
+"""
+Tests for lake (open-water) sub-catchments.
+
+A ``kind: lake`` sub-catchment is a single threshold power-law reservoir fed by
+direct ``P - E`` (open-water evaporation = the model ET column, no soil-moisture
+water stress) and discharging over a sill, ``Q_out = a*max(H - H_sill, 0)^b``
+(b = 5/3 by default). v1 holds the lake hydrologically disconnected from river
+inflow (``f_route_lake = 0``); the bidirectional groundwater exchange ``Q_gw``
+to a land sub-catchment is added in a later stage. See ``DESIGN_lakes.md``.
+
+Forcing uses the Cannon River forward example (examples/cannon_forward/).
+"""
+
+import os
+
+import numpy as np
+import pandas as pd
+import pytest
+import yaml
+
+import mnished
+
+EXAMPLE_DIR = os.path.abspath(
+    os.path.join(os.path.dirname(__file__), "..", "examples", "cannon_forward")
+)
+CANNON_CSV = os.path.join(EXAMPLE_DIR, "CannonTestInput.csv")
+
+Q_COL = "Specific Discharge (modeled) [mm/day]"
+
+
+def _base_cfg():
+    """Cannon-forced skeleton with snowpack off and no water-balance closure,
+    so the mass-balance test is a real check of the bookkeeping (not an
+    ET auto-tune that trivially forces P - Q - ET = 0)."""
+    return {
+        'timeseries': {'datafile': CANNON_CSV},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 0, 'enforce_water_balance': 'none'},
+        'snowmelt': {'PDD_melt_factor': 1.0},
+        'modules': {'snowpack': False, 'frozen_ground': False,
+                    'rain_on_snow': False, 'direct_runoff': False},
+    }
+
+
+def _land(area, recession=(14, 500), exfil=(0.3, 1.0),
+          hmax=(20.0, float('inf')), h0=(5, 300), name='upland'):
+    return {'name': name, 'area_fraction': area,
+            'reservoirs': {'recession_coefficients': list(recession),
+                           'exfiltration_fractions': list(exfil),
+                           'maximum_effective_depths__mm': list(hmax)},
+            'initial_conditions': {
+                'water_reservoir_effective_depths__mm': list(h0)}}
+
+
+def _lake(area, a=0.05, sill=200.0, b=5.0 / 3.0, h0=250.0, name='lake',
+          **extra):
+    lk = {'outflow_coefficient': a, 'sill_storage__mm': sill,
+          'outflow_exponent': b}
+    lk.update(extra)
+    return {'name': name, 'kind': 'lake', 'area_fraction': area,
+            'lake': lk, 'initial_conditions': {'lake_storage__mm': h0}}
+
+
+def _write(tmp_path, cfg, name='cfg.yml'):
+    p = tmp_path / name
+    p.write_text(yaml.safe_dump(cfg))
+    return str(p)
+
+
+def _num(hd, col):
+    return pd.to_numeric(hd[col], errors='coerce').to_numpy()
+
+
+def _init(tmp_path, sub_catchments):
+    cfg = _base_cfg()
+    cfg['sub_catchments'] = sub_catchments
+    b = mnished.Buckets()
+    b.initialize(_write(tmp_path, cfg))
+    return b
+
+
+# ---------------------------------------------------------------------------
+# Structure
+# ---------------------------------------------------------------------------
+
+def test_lake_config_builds(tmp_path):
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, a=0.05, sill=200.0, b=1.6)])
+    assert b.has_lake
+    assert [sc.kind for sc in b.sub_catchments] == ['land', 'lake']
+    lake = b.sub_catchments[1]
+    assert len(lake.reservoirs) == 1
+    res = lake.reservoirs[0]
+    assert res.junction_type == 'threshold'
+    assert res.H_threshold == 200.0
+    assert res.recession_exponent == 1.6
+    assert res.recession_coeff == pytest.approx(1.0 / 0.05)   # a = 1/recession_coeff
+    assert lake.snowpack is None
+    assert lake.f_route_lake == 0.0
+    # Flattened reservoirs include the lake's single store.
+    assert len(b.reservoirs) == 3
+
+
+def test_lake_default_exponent_is_five_thirds(tmp_path):
+    b = _init(tmp_path, [_land(0.6), {'name': 'lk', 'kind': 'lake',
+              'area_fraction': 0.4,
+              'lake': {'outflow_coefficient': 0.05, 'sill_storage__mm': 100.0},
+              'initial_conditions': {'lake_storage__mm': 150.0}}])
+    assert b.sub_catchments[1].reservoirs[0].recession_exponent == \
+        pytest.approx(5.0 / 3.0)
+
+
+def test_lake_forces_python_path(tmp_path):
+    """A lake present means has_lake is True; run() must use the pure-Python
+    loop (the JIT does not yet cover lakes — issue #19)."""
+    b = _init(tmp_path, [_land(0.7), _lake(0.3)])
+    assert b.has_lake is True
+    b.run()   # must not raise regardless of numba availability
+    assert np.isfinite(_num(b.hydrodata, Q_COL)).any()
+
+
+# ---------------------------------------------------------------------------
+# Water balance and outflow physics
+# ---------------------------------------------------------------------------
+
+def test_lake_mass_balance_closes(tmp_path):
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, sill=200.0, h0=250.0)])
+
+    def storage():
+        return sum(sc.area_fraction * sum(r.Hwater for r in sc.reservoirs)
+                   for sc in b.sub_catchments)
+    s0 = storage()
+    b.run()
+    s1 = storage()
+    hd = b.hydrodata
+    P, ET, Qm = (_num(hd, 'Precipitation [mm/day]'),
+                 _num(hd, 'ET for model [mm/day]'), _num(hd, Q_COL))
+    mask = np.isfinite(Qm)
+    residual = np.nansum((P - ET)[mask]) - np.nansum(Qm[mask]) - (s1 - s0)
+    assert residual == pytest.approx(0.0, abs=1e-6)
+
+
+def test_lake_dead_pool_holds_below_sill(tmp_path):
+    """With the sill unreachable, the lake never discharges above it; its
+    storage only reflects P - E (dead pool)."""
+    b = _init(tmp_path, [_land(0.99, recession=(14,), exfil=(1.0,),
+                               hmax=(float('inf'),), h0=(10,)),
+                         _lake(0.01, sill=1e6, h0=100.0)])
+    b.run()
+    lake_res = b.sub_catchments[1].reservoirs[0]
+    # Never rose above the (unreachable) sill, so no over-sill discharge path.
+    assert lake_res.Hwater < 1e6
+    assert lake_res.H_discharge == pytest.approx(0.0)
+
+
+def test_lake_discharges_toward_sill(tmp_path):
+    """A lake started above its sill drains toward it."""
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, sill=200.0, h0=400.0)])
+    b.run()
+    assert b.sub_catchments[1].reservoirs[0].Hwater < 400.0
+
+
+# ---------------------------------------------------------------------------
+# Validation / guards
+# ---------------------------------------------------------------------------
+
+def test_f_route_lake_nonzero_not_implemented(tmp_path):
+    with pytest.raises(NotImplementedError):
+        _init(tmp_path, [_land(0.7), _lake(0.3, f_route_lake=0.2)])
+
+
+def test_lake_requires_positive_outflow_coefficient(tmp_path):
+    with pytest.raises(ValueError):
+        _init(tmp_path, [_land(0.7), {'name': 'lk', 'kind': 'lake',
+              'area_fraction': 0.3,
+              'lake': {'outflow_coefficient': 0.0, 'sill_storage__mm': 100.0}}])
+
+
+def test_lake_area_counts_toward_basin_sum(tmp_path):
+    """Lake area is part of the basin; land + lake must sum to 1."""
+    with pytest.raises(ValueError):
+        _init(tmp_path, [_land(0.7), _lake(0.5)])   # sums to 1.2

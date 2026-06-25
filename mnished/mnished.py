@@ -1012,6 +1012,15 @@ class SubCatchment(object):
     reservoirs : list of Reservoir
         The vertical reservoir cascade for this sub-catchment, ordered
         shallowest (index 0) to deepest. Must contain at least one reservoir.
+        A ``kind='lake'`` sub-catchment must contain exactly one reservoir
+        (its open-water store), configured as a threshold power-law outlet.
+    kind : {'land', 'lake'}, optional
+        Compartment type. ``'land'`` (default) is an ordinary parallel land
+        zone with a reservoir cascade. ``'lake'`` is an open-water element:
+        a single threshold power-law reservoir fed by direct ``P - E`` and
+        coupled to a land sub-catchment's deepest reservoir by a bidirectional
+        groundwater exchange ``Q_gw`` (see ``DESIGN_lakes.md``). A lake carries
+        no snowpack / frozen-ground / cascade state.
     snowpack : Snowpack or None, optional
         Snowpack state for this sub-catchment. None when the basin has no
         snowpack module enabled. Default None.
@@ -1029,24 +1038,40 @@ class SubCatchment(object):
     """
 
     def __init__(self, name, area_fraction, reservoirs, *,
-                 snowpack=None, fgi_init=0.0, H_deficit_carry_init=0.0,
-                 forcing=None):
+                 kind='land', snowpack=None, fgi_init=0.0,
+                 H_deficit_carry_init=0.0, forcing=None):
         if forcing is not None:
             raise NotImplementedError(
                 "Per-sub-catchment forcing is not yet supported; basin-level "
                 "forcing is shared across all sub-catchments. Remove the "
                 f"'forcing' block from sub-catchment '{name}'.")
+        if kind not in ('land', 'lake'):
+            raise ValueError(
+                f"Sub-catchment '{name}' has unknown kind '{kind}'; "
+                "must be 'land' or 'lake'.")
         if len(reservoirs) < 1:
             raise ValueError(
                 f"Sub-catchment '{name}' has no reservoirs; each "
                 "sub-catchment must have at least one reservoir.")
+        if kind == 'lake' and len(reservoirs) != 1:
+            raise ValueError(
+                f"Lake sub-catchment '{name}' must have exactly one reservoir "
+                f"(its open-water store); got {len(reservoirs)}.")
         self.name             = name
         self.area_fraction    = area_fraction
         self.reservoirs       = reservoirs
+        self.kind             = kind
         self.snowpack         = snowpack
         self.fgi              = fgi_init
         self.H_deficit_carry  = H_deficit_carry_init
         self.forcing          = forcing
+        # Lake-only coupling (see DESIGN_lakes.md). The bidirectional
+        # groundwater exchange Q_gw runs against gw_partner's deepest reservoir;
+        # f_route_lake is the basin fraction routed *through* the lake as
+        # channelized inflow (held at 0 for v1 — lake disconnected from river
+        # inflow). Both are unused for land sub-catchments.
+        self.gw_partner    = None
+        self.f_route_lake  = 0.0
 
 
 class Buckets(object):
@@ -1124,6 +1149,11 @@ class Buckets(object):
     def n_sub_catchments(self):
         """Number of parallel sub-catchments (>= 1)."""
         return len(self.sub_catchments)
+
+    @property
+    def has_lake(self):
+        """True when any sub-catchment is an open-water (lake) element."""
+        return any(sc.kind == 'lake' for sc in self.sub_catchments)
 
     @property
     def snowpack(self):
@@ -1346,6 +1376,9 @@ class Buckets(object):
 
         sub_catchments = []
         for sc in sc_cfgs:
+            if sc.get('kind', 'land') == 'lake':
+                sub_catchments.append(self._build_lake(sc))
+                continue
             _res_cfg = sc['reservoirs']
             _ic = sc.get('initial_conditions', {})
             _n = len(_res_cfg['recession_coefficients'])
@@ -1355,6 +1388,60 @@ class Buckets(object):
                 SubCatchment(sc['name'], sc['area_fraction'], _reservoirs,
                              forcing=sc.get('forcing')))
         return sub_catchments
+
+    @staticmethod
+    def _build_lake(sc):
+        """
+        Build a lake (open-water) SubCatchment from a ``kind: lake`` config.
+
+        The lake is a single threshold power-law reservoir whose outflow is
+        ``Q_out = a * max(H - H_sill, 0)^b`` (b = 5/3 by default; a Manning
+        friction-controlled river outlet). Mapped onto Reservoir as a
+        ``'threshold'`` junction with ``recession_coeff = 1/a``,
+        ``H_threshold = H_sill``, and ``recession_exponent = b``.
+
+        Config schema (under the sub-catchment entry)::
+
+            kind: lake
+            area_fraction: <f_lake>
+            lake:
+              outflow_coefficient: <a>          # > 0
+              sill_storage__mm: <H_sill>        # default 0
+              outflow_exponent: <b>             # default 5/3
+              gw_partner: <land sub-catchment name>   # optional (Q_gw)
+              f_route_lake: <fraction>          # v1: must be 0
+            initial_conditions:
+              lake_storage__mm: <H0>            # default 0
+        """
+        _lk = sc.get('lake', {})
+        _a  = _lk.get('outflow_coefficient')
+        if _a is None or _a <= 0:
+            raise ValueError(
+                f"Lake '{sc['name']}': lake.outflow_coefficient must be > 0.")
+        _b      = float(_lk.get('outflow_exponent', 5.0 / 3.0))
+        _H_sill = float(_lk.get('sill_storage__mm', 0.0))
+        _H0     = float(sc.get('initial_conditions', {}).get('lake_storage__mm',
+                                                             0.0))
+        _f_route = float(_lk.get('f_route_lake', 0.0))
+        if _f_route != 0.0:
+            raise NotImplementedError(
+                f"Lake '{sc['name']}': f_route_lake > 0 (channelized inflow "
+                "routed through the lake) is not implemented yet; the lake is "
+                "hydrologically disconnected from river inflow in this version. "
+                "Set f_route_lake: 0. See DESIGN_lakes.md and issue #19.")
+
+        _res = Reservoir(recession_coeff=1.0 / _a, f_to_discharge=1.0,
+                         junction_type='threshold', H_threshold=_H_sill,
+                         H0=_H0)
+        _res.recession_exponent = _b
+        _res.recession_H_ref    = 1.0
+
+        _lake = SubCatchment(sc['name'], sc['area_fraction'], [_res],
+                             kind='lake')
+        _lake.f_route_lake     = _f_route
+        # Resolved to the partner SubCatchment object after all are built.
+        _lake._gw_partner_name = _lk.get('gw_partner')
+        return _lake
 
     def initialize(self, config_file=None, enforce_water_balance=None):
         """
@@ -1514,11 +1601,14 @@ class Buckets(object):
                             'Minimum Temperature [C]' in self.hydrodata.columns and
                             'Maximum Temperature [C]' in self.hydrodata.columns)
         if self.has_snowpack:
-            # Each sub-catchment gets its own snowpack so that per-sub-catchment
-            # forcing can drive them independently later. With basin-shared
-            # forcing they evolve identically. self.snowpack aliases the first.
+            # Each land sub-catchment gets its own snowpack so that
+            # per-sub-catchment forcing can drive them independently later. With
+            # basin-shared forcing they evolve identically. self.snowpack
+            # aliases the first. Lakes carry no snowpack (no ice/snow-on-lake
+            # in v1; see DESIGN_lakes.md).
             for sc in self.sub_catchments:
-                sc.snowpack = Snowpack(self.melt_factor)
+                if sc.kind != 'lake':
+                    sc.snowpack = Snowpack(self.melt_factor)
         elif 'Mean Temperature [C]' in self.hydrodata.columns and not self.use_snowpack:
             pass  # snowpack deliberately disabled via modules config
         else:
@@ -2126,6 +2216,40 @@ class Buckets(object):
 
         return qi, flux_direct, flux_tile, flux_multipath
 
+    def _advance_lake(self, time_step, lake_sc):
+        """
+        Advance a lake sub-catchment by a single time step.
+
+        Direct precipitation minus open-water evaporation recharges the lake
+        store; the threshold power-law outlet discharges water above the sill.
+        Evaporation can draw the lake below the sill (into the dead pool) and
+        still continues. The bidirectional groundwater exchange Q_gw, when a
+        partner is configured, is applied separately in update() before this
+        advance.
+
+        Parameters
+        ----------
+        time_step : int
+            Row index in self.hydrodata for this step.
+        lake_sc : SubCatchment
+            The lake sub-catchment to advance (``kind == 'lake'``).
+
+        Returns
+        -------
+        float
+            Lake-outlet specific discharge [mm/day] per unit lake area,
+            unweighted by area fraction.
+        """
+        res = lake_sc.reservoirs[0]
+        P = self.hydrodata['Precipitation [mm/day]'][time_step]
+        # Open-water evaporation uses the model ET column directly (already
+        # scaled by et_scale and the water-balance multiplier); no soil-moisture
+        # water-stress factor, because open water is not moisture-limited.
+        E = self.hydrodata['ET for model [mm/day]'][time_step]
+        res.recharge(P - E)
+        res.discharge(self.dt)
+        return res.H_discharge
+
     def update(self, time_step=None):
         """
         Advance the model by one time step.
@@ -2165,7 +2289,7 @@ class Buckets(object):
             if self.has_snowpack:
                 self.hydrodata.at[time_step, 'Snowpack (modeled) [mm SWE]'] = sum(
                     sc.area_fraction * sc.snowpack.Hwater
-                    for sc in self.sub_catchments)
+                    for sc in self.sub_catchments if sc.snowpack is not None)
             self.hydrodata.at[time_step,
                               'Subsurface storage (modeled total) [mm]'] = sum(
                 sc.area_fraction * self._sub_catchment_storage(sc)
@@ -2183,10 +2307,14 @@ class Buckets(object):
         flux_multipath = 0.0
         for sc in self.sub_catchments:
             a = sc.area_fraction
-            qi_sc, dr_sc, tile_sc, mp_sc = self._advance_sub_catchment(
-                time_step, sc)
+            if sc.kind == 'lake':
+                qi_sc = self._advance_lake(time_step, sc)
+                dr_sc = tile_sc = mp_sc = 0.0
+            else:
+                qi_sc, dr_sc, tile_sc, mp_sc = self._advance_sub_catchment(
+                    time_step, sc)
             qi             += a * qi_sc
-            if self.has_snowpack:
+            if self.has_snowpack and sc.snowpack is not None:
                 swe        += a * sc.snowpack.Hwater
             storage        += a * self._sub_catchment_storage(sc)
             flux_direct    += a * dr_sc
@@ -2306,7 +2434,9 @@ class Buckets(object):
 
         # JIT path: available whenever numba imported successfully. PDM
         # (pdm_H0) and et_water_stress are both supported by the compiled loop.
-        _can_jit = _numba_available
+        # Lakes are not yet in the JIT (see issue #19); fall back to the
+        # pure-Python loop when a lake element is present.
+        _can_jit = _numba_available and not self.has_lake
 
         # Surface a slow pure-Python fallback once, so it is not silent — but
         # only for an installed-but-broken numba; a plain "numba not installed"
