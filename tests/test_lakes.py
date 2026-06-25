@@ -111,13 +111,59 @@ def test_lake_default_exponent_is_five_thirds(tmp_path):
         pytest.approx(5.0 / 3.0)
 
 
-def test_lake_forces_python_path(tmp_path):
-    """A lake present means has_lake is True; run() must use the pure-Python
-    loop (the JIT does not yet cover lakes — issue #19)."""
+def test_lake_runs(tmp_path):
+    """A lake present (has_lake True) runs end to end regardless of numba
+    availability (JIT or pure-Python)."""
     b = _init(tmp_path, [_land(0.7), _lake(0.3)])
     assert b.has_lake is True
-    b.run()   # must not raise regardless of numba availability
+    b.run()   # must not raise
     assert np.isfinite(_num(b.hydrodata, Q_COL)).any()
+
+
+def test_lake_jit_matches_pure_python(tmp_path):
+    """The Numba JIT and the pure-Python loop agree to round-off for a
+    land+lake basin with snowpack, a threshold outlet, and Q_gw active."""
+    pytest.importorskip("numba", exc_type=ImportError)
+    import mnished.mnished as _m
+    cfg = {
+        'timeseries': {'datafile': CANNON_CSV},
+        'catchment': {'drainage_basin_area__km2': 3800,
+                      'evapotranspiration_method': 'datafile',
+                      'water_year_start_month': 10},
+        'general': {'spin_up_cycles': 1},
+        'snowmelt': {'PDD_melt_factor': 2.0, 'fgi_decay_coeff': 0.97,
+                     'snow_insulation_k': 0.1},
+        'modules': {'snowpack': True, 'frozen_ground': True,
+                    'rain_on_snow': True, 'direct_runoff': False},
+        'sub_catchments': [
+            {'name': 'upland', 'area_fraction': 0.65,
+             'reservoirs': {'recession_coefficients': [14, 500],
+                            'exfiltration_fractions': [0.3, 1.0],
+                            'maximum_effective_depths__mm': [20.0, float('inf')]},
+             'initial_conditions': {
+                 'water_reservoir_effective_depths__mm': [8, 350]}},
+            {'name': 'lake', 'kind': 'lake', 'area_fraction': 0.35,
+             'lake': {'outflow_coefficient': 0.05, 'sill_storage__mm': 180.0,
+                      'gw_partner': 'upland'},
+             'initial_conditions': {'lake_storage__mm': 260.0}}],
+    }
+    cfg_path = _write(tmp_path, cfg)
+
+    b_jit = mnished.Buckets()
+    b_jit.initialize(cfg_path)
+    b_jit.run()
+
+    with pytest.MonkeyPatch().context() as mp:
+        mp.setattr(_m, "_numba_available", False)
+        b_py = mnished.Buckets()
+        b_py.initialize(cfg_path)
+        b_py.run()
+
+    q_jit, q_py = _num(b_jit.hydrodata, Q_COL), _num(b_py.hydrodata, Q_COL)
+    np.testing.assert_allclose(q_jit, q_py, rtol=1e-7, atol=1e-9, equal_nan=True)
+    s_jit = [r.Hwater for sc in b_jit.sub_catchments for r in sc.reservoirs]
+    s_py = [r.Hwater for sc in b_py.sub_catchments for r in sc.reservoirs]
+    np.testing.assert_allclose(s_jit, s_py, rtol=1e-7, atol=1e-9)
 
 
 # ---------------------------------------------------------------------------

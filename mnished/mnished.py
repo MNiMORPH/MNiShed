@@ -85,7 +85,8 @@ if _numba_available:
                  melt_factor, snow_insulation_k, fgi_decay_coeff, fdd_threshold,
                  direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
                  has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
-                 use_direct_runoff, use_et_water_stress, has_trange):
+                 use_direct_runoff, use_et_water_stress, has_trange,
+                 is_lake, lake_partner_res, lake_partner_area):
         """JIT-compiled daily time loop replacing Buckets.run()/update().
 
         Replicates update()/_advance_sub_catchment()/_compute_snowpack()/
@@ -167,6 +168,37 @@ if _numba_available:
                 H_sub_out[step] = H_sub_total
                 continue
 
+            # ── Lake <-> land-subsurface groundwater exchange (Q_gw) ──────
+            # Applied first using start-of-step heads (operator splitting),
+            # mirroring _apply_lake_gw_exchange(). Volume-conserving across the
+            # area-fraction difference; donor clamped in its own units.
+            for sc in range(n_sub):
+                if is_lake[sc] == 1 and lake_partner_res[sc] >= 0:
+                    li = sc_start_idx[sc]            # lake's single reservoir
+                    pi = lake_partner_res[sc]        # partner deepest reservoir
+                    dh = H_res[pi] - H_res[li]
+                    if dh != 0.0:
+                        b_gw    = b_arr[pi]
+                        tau_gw  = tau_arr[pi] * (H_ref_arr[pi] ** (b_gw - 1.0))
+                        dH_land = math.copysign(abs(dh) ** b_gw, dh) / tau_gw * dt
+                        if dh > 0.0:
+                            if dH_land > dh:
+                                dH_land = dh
+                        else:
+                            if dH_land < dh:
+                                dH_land = dh
+                        a_land = lake_partner_area[sc]
+                        a_lake = sc_area_fractions[sc]
+                        dH_lake = dH_land * a_land / a_lake
+                        if dH_land > H_res[pi]:
+                            dH_land = H_res[pi]
+                            dH_lake = dH_land * a_land / a_lake
+                        elif -dH_lake > H_res[li]:
+                            dH_lake = -H_res[li]
+                            dH_land = dH_lake * a_lake / a_land
+                        H_res[pi] -= dH_land
+                        H_res[li] += dH_lake
+
             qi_basin    = 0.0
             swe_tot     = 0.0
             H_sub_total = 0.0
@@ -178,6 +210,32 @@ if _numba_available:
                 H_snow_cur = H_snow[sc]
                 fgi_cur    = fgi[sc]
                 H_dc_sc    = H_dc[sc]
+
+                # ── Lake element ──────────────────────────────────────────
+                # Direct P - E recharge (open-water E = ET column, no soil
+                # water stress, no snowpack/FGI/cascade), then threshold
+                # power-law outlet. Mirrors _advance_lake().
+                if is_lake[sc] == 1:
+                    li     = r_start                    # single reservoir
+                    new_H  = H_res[li] + (P_t - ET_t)
+                    H_res[li] = new_H if new_H > 0.0 else 0.0
+                    H_eff_l = H_res[li] - H_threshold_arr[li]
+                    if H_eff_l < 0.0:
+                        H_eff_l = 0.0
+                    b_l = b_arr[li]
+                    if b_l == 1.0 or H_eff_l <= 0.0:
+                        dH_l = H_eff_l * (1.0 - math.exp(-dt / tau_arr[li]))
+                    else:
+                        tau_l = tau_arr[li] * (H_ref_arr[li] ** (b_l - 1.0))
+                        arg_l = H_eff_l ** (1.0 - b_l) + (b_l - 1.0) * dt / tau_l
+                        H_nl  = arg_l ** (1.0 / (1.0 - b_l)) if arg_l > 0.0 else 0.0
+                        dH_l  = H_eff_l - H_nl
+                        if dH_l < 0.0:
+                            dH_l = 0.0
+                    H_res[li] -= dH_l
+                    qi_basin    += area * dH_l
+                    H_sub_total += area * H_res[li]
+                    continue
 
                 # et_water_stress: scale ET demand by shallow-reservoir wetness
                 # (PDM saturation CDF of the sub-catchment's top reservoir).
@@ -2534,10 +2592,10 @@ class Buckets(object):
                 self.hydrodata[_col] = pd.NA
 
         # JIT path: available whenever numba imported successfully. PDM
-        # (pdm_H0) and et_water_stress are both supported by the compiled loop.
-        # Lakes are not yet in the JIT (see issue #19); fall back to the
-        # pure-Python loop when a lake element is present.
-        _can_jit = _numba_available and not self.has_lake
+        # (pdm_H0), et_water_stress, and lake elements (direct P-E + threshold
+        # outlet + bidirectional Q_gw exchange) are all supported by the
+        # compiled loop.
+        _can_jit = _numba_available
 
         # Surface a slow pure-Python fallback once, so it is not silent — but
         # only for an installed-but-broken numba; a plain "numba not installed"
@@ -2584,6 +2642,20 @@ class Buckets(object):
                                  dtype=np.float64)
             _dc_init  = np.array([sc.H_deficit_carry
                                   for sc in self.sub_catchments], dtype=np.float64)
+
+            # Lake elements: which sub-catchments are lakes, and for each the
+            # partner land sub-catchment's deepest reservoir (flat index) and
+            # area fraction, for the Q_gw exchange. -1 / 0 when not applicable.
+            _is_lake = np.array([1 if sc.kind == 'lake' else 0
+                                 for sc in self.sub_catchments], dtype=np.int64)
+            _lake_partner_res  = np.full(self.n_sub_catchments, -1, dtype=np.int64)
+            _lake_partner_area = np.zeros(self.n_sub_catchments, dtype=np.float64)
+            _sc_idx = {id(sc): k for k, sc in enumerate(self.sub_catchments)}
+            for _k, _sc in enumerate(self.sub_catchments):
+                if _sc.kind == 'lake' and _sc.gw_partner is not None:
+                    _pk = _sc_idx[id(_sc.gw_partner)]
+                    _lake_partner_res[_k]  = _sc_end[_pk] - 1
+                    _lake_partner_area[_k] = self.sub_catchments[_pk].area_fraction
 
             _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
             (_Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow,
@@ -2632,6 +2704,9 @@ class Buckets(object):
                 self.use_direct_runoff,
                 self.use_et_water_stress,
                 self._has_trange,
+                _is_lake,
+                _lake_partner_res,
+                _lake_partner_area,
             )
             self.hydrodata.loc[_idx, 'Specific Discharge (modeled) [mm/day]'] = _Q
             if self.has_snowpack:
