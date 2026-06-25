@@ -86,7 +86,8 @@ if _numba_available:
                  direct_runoff_fraction, wp_soil, wp_soil_sigma, et_alpha, dt,
                  has_snowpack, use_fgi, use_rain_on_snow, use_et_reservoir_draw,
                  use_direct_runoff, use_et_water_stress, has_trange,
-                 is_lake, lake_partner_res, lake_partner_area):
+                 is_lake, lake_partner_res, lake_partner_area,
+                 f_route_lake_arr, routed_away_arr, lake_partner_sc):
         """JIT-compiled daily time loop replacing Buckets.run()/update().
 
         Replicates update()/_advance_sub_catchment()/_compute_snowpack()/
@@ -202,40 +203,20 @@ if _numba_available:
             qi_basin    = 0.0
             swe_tot     = 0.0
             H_sub_total = 0.0
+            qi_land     = np.zeros(n_sub)   # per-land-zone discharge, for routing
 
             for sc in range(n_sub):
+                # Pass 1: land zones only. Lakes are advanced in a second pass
+                # (below) so they can receive their partner's current-step
+                # discharge as channelized inflow.
+                if is_lake[sc] == 1:
+                    continue
                 r_start = sc_start_idx[sc]
                 r_end   = sc_end_idx[sc]
                 area    = sc_area_fractions[sc]
                 H_snow_cur = H_snow[sc]
                 fgi_cur    = fgi[sc]
                 H_dc_sc    = H_dc[sc]
-
-                # ── Lake element ──────────────────────────────────────────
-                # Direct P - E recharge (open-water E = ET column, no soil
-                # water stress, no snowpack/FGI/cascade), then threshold
-                # power-law outlet. Mirrors _advance_lake().
-                if is_lake[sc] == 1:
-                    li     = r_start                    # single reservoir
-                    new_H  = H_res[li] + (P_t - ET_t)
-                    H_res[li] = new_H if new_H > 0.0 else 0.0
-                    H_eff_l = H_res[li] - H_threshold_arr[li]
-                    if H_eff_l < 0.0:
-                        H_eff_l = 0.0
-                    b_l = b_arr[li]
-                    if b_l == 1.0 or H_eff_l <= 0.0:
-                        dH_l = H_eff_l * (1.0 - math.exp(-dt / tau_arr[li]))
-                    else:
-                        tau_l = tau_arr[li] * (H_ref_arr[li] ** (b_l - 1.0))
-                        arg_l = H_eff_l ** (1.0 - b_l) + (b_l - 1.0) * dt / tau_l
-                        H_nl  = arg_l ** (1.0 / (1.0 - b_l)) if arg_l > 0.0 else 0.0
-                        dH_l  = H_eff_l - H_nl
-                        if dH_l < 0.0:
-                            dH_l = 0.0
-                    H_res[li] -= dH_l
-                    qi_basin    += area * dH_l
-                    H_sub_total += area * H_res[li]
-                    continue
 
                 # et_water_stress: scale ET demand by shallow-reservoir wetness
                 # (PDM saturation CDF of the sub-catchment's top reservoir).
@@ -480,10 +461,48 @@ if _numba_available:
                 fgi[sc]    = fgi_cur
                 H_dc[sc]   = H_dc_sc
 
-                qi_basin    += area * qi
+                qi_land[sc]  = qi
+                # The fraction routed into lakes reaches the gauge via the lake
+                # outlets, not directly.
+                qi_basin    += area * qi * (1.0 - routed_away_arr[sc])
                 swe_tot     += area * H_snow_cur
                 for r in range(r_start, r_end):
                     H_sub_total += area * (H_res[r] + H_tile[r])
+
+            # ── Pass 2: lake elements ─────────────────────────────────────
+            # Direct P - E recharge (open-water E = ET column, no soil water
+            # stress, no snowpack/FGI/cascade) plus channelized inflow routed
+            # from the partner land zone's current-step discharge, then the
+            # threshold power-law outlet. Mirrors _advance_lake().
+            for sc in range(n_sub):
+                if is_lake[sc] != 1:
+                    continue
+                area = sc_area_fractions[sc]
+                li   = sc_start_idx[sc]            # single reservoir
+                routed_in = 0.0
+                if f_route_lake_arr[sc] > 0.0 and lake_partner_sc[sc] >= 0:
+                    psc = lake_partner_sc[sc]
+                    routed_in = (f_route_lake_arr[sc]
+                                 * sc_area_fractions[psc] / area
+                                 * qi_land[psc])
+                new_H = H_res[li] + (P_t - ET_t + routed_in)
+                H_res[li] = new_H if new_H > 0.0 else 0.0
+                H_eff_l = H_res[li] - H_threshold_arr[li]
+                if H_eff_l < 0.0:
+                    H_eff_l = 0.0
+                b_l = b_arr[li]
+                if b_l == 1.0 or H_eff_l <= 0.0:
+                    dH_l = H_eff_l * (1.0 - math.exp(-dt / tau_arr[li]))
+                else:
+                    tau_l = tau_arr[li] * (H_ref_arr[li] ** (b_l - 1.0))
+                    arg_l = H_eff_l ** (1.0 - b_l) + (b_l - 1.0) * dt / tau_l
+                    H_nl  = arg_l ** (1.0 / (1.0 - b_l)) if arg_l > 0.0 else 0.0
+                    dH_l  = H_eff_l - H_nl
+                    if dH_l < 0.0:
+                        dH_l = 0.0
+                H_res[li]   -= dH_l
+                qi_basin    += area * dH_l
+                H_sub_total += area * H_res[li]
 
             # ── Record basin outputs ──────────────────────────────────────
             Q_out[step]   = qi_basin
@@ -1125,11 +1144,15 @@ class SubCatchment(object):
         self.forcing          = forcing
         # Lake-only coupling (see DESIGN_lakes.md). The bidirectional
         # groundwater exchange Q_gw runs against gw_partner's deepest reservoir;
-        # f_route_lake is the basin fraction routed *through* the lake as
-        # channelized inflow (held at 0 for v1 — lake disconnected from river
-        # inflow). Both are unused for land sub-catchments.
+        # f_route_lake is the fraction of the partner land zone's discharge
+        # routed *through* the lake as channelized inflow (0 = disconnected from
+        # river inflow). Both are unused for land sub-catchments.
         self.gw_partner    = None
         self.f_route_lake  = 0.0
+        # For a land zone: total fraction of its discharge routed into lakes
+        # (sum of f_route_lake over the lakes it feeds); set in
+        # _resolve_lake_partners. 0 unless a lake routes through this zone.
+        self._routed_away_fraction = 0.0
 
 
 class Buckets(object):
@@ -1481,12 +1504,10 @@ class Buckets(object):
         _H0     = float(sc.get('initial_conditions', {}).get('lake_storage__mm',
                                                              0.0))
         _f_route = float(_lk.get('f_route_lake', 0.0))
-        if _f_route != 0.0:
-            raise NotImplementedError(
-                f"Lake '{sc['name']}': f_route_lake > 0 (channelized inflow "
-                "routed through the lake) is not implemented yet; the lake is "
-                "hydrologically disconnected from river inflow in this version. "
-                "Set f_route_lake: 0. See DESIGN_lakes.md and issue #19.")
+        if not (0.0 <= _f_route <= 1.0):
+            raise ValueError(
+                f"Lake '{sc['name']}': f_route_lake must be in [0, 1]; "
+                f"got {_f_route}.")
 
         _res = Reservoir(recession_coeff=1.0 / _a, f_to_discharge=1.0,
                          junction_type='threshold', H_threshold=_H_sill,
@@ -1525,17 +1546,41 @@ class Buckets(object):
             _name = getattr(lake, '_gw_partner_name', None)
             if _name is None:
                 lake.gw_partner = _land[0] if len(_land) == 1 else None
-                continue
-            if _name not in _by_name:
+            else:
+                if _name not in _by_name:
+                    raise ValueError(
+                        f"Lake '{lake.name}': gw_partner '{_name}' is not a "
+                        "sub-catchment in this basin.")
+                _partner = _by_name[_name]
+                if _partner.kind != 'land':
+                    raise ValueError(
+                        f"Lake '{lake.name}': gw_partner '{_name}' must be a "
+                        "land sub-catchment, not a lake.")
+                lake.gw_partner = _partner
+            # The gw_partner doubles as the channelized-routing source. When
+            # f_route_lake > 0, a land partner is required: that zone's
+            # discharge is the water routed through the lake.
+            if lake.f_route_lake > 0.0 and lake.gw_partner is None:
                 raise ValueError(
-                    f"Lake '{lake.name}': gw_partner '{_name}' is not a "
-                    "sub-catchment in this basin.")
-            _partner = _by_name[_name]
-            if _partner.kind != 'land':
+                    f"Lake '{lake.name}': f_route_lake > 0 needs a routing "
+                    "source, but no land partner could be resolved. Name a "
+                    "'gw_partner' (the land sub-catchment whose discharge "
+                    "routes through the lake).")
+
+        # Aggregate the routed-away fraction onto each land zone (its discharge
+        # can feed at most 100% into the lakes it supplies).
+        for sc in self.sub_catchments:
+            sc._routed_away_fraction = 0.0
+        for lake in self.sub_catchments:
+            if (lake.kind == 'lake' and lake.f_route_lake > 0.0
+                    and lake.gw_partner is not None):
+                lake.gw_partner._routed_away_fraction += lake.f_route_lake
+        for sc in self.sub_catchments:
+            if sc._routed_away_fraction > 1.0 + 1e-9:
                 raise ValueError(
-                    f"Lake '{lake.name}': gw_partner '{_name}' must be a land "
-                    "sub-catchment, not a lake.")
-            lake.gw_partner = _partner
+                    f"Land sub-catchment '{sc.name}' routes "
+                    f"{sc._routed_away_fraction:.3f} of its discharge into "
+                    "lakes (sum of their f_route_lake), which exceeds 1.")
 
     def initialize(self, config_file=None, enforce_water_balance=None):
         """
@@ -2315,16 +2360,16 @@ class Buckets(object):
 
         return qi, flux_direct, flux_tile, flux_multipath
 
-    def _advance_lake(self, time_step, lake_sc):
+    def _advance_lake(self, time_step, lake_sc, routed_inflow=0.0):
         """
         Advance a lake sub-catchment by a single time step.
 
-        Direct precipitation minus open-water evaporation recharges the lake
-        store; the threshold power-law outlet discharges water above the sill.
-        Evaporation can draw the lake below the sill (into the dead pool) and
-        still continues. The bidirectional groundwater exchange Q_gw, when a
-        partner is configured, is applied separately in update() before this
-        advance.
+        Direct precipitation minus open-water evaporation (plus any channelized
+        inflow routed from the partner land zone) recharges the lake store; the
+        threshold power-law outlet discharges water above the sill. Evaporation
+        can draw the lake below the sill (into the dead pool) and still
+        continues. The bidirectional groundwater exchange Q_gw, when a partner
+        is configured, is applied separately in update() before this advance.
 
         Parameters
         ----------
@@ -2332,6 +2377,13 @@ class Buckets(object):
             Row index in self.hydrodata for this step.
         lake_sc : SubCatchment
             The lake sub-catchment to advance (``kind == 'lake'``).
+        routed_inflow : float, optional
+            Channelized inflow routed from the partner land zone this step,
+            already expressed as a depth per unit *lake* area [mm/day]:
+            ``f_route_lake * (a_land / a_lake) * Q_land``. The transfer is
+            instantaneous (no channel-travel lag) and enters lake storage before
+            the outlet step, so the lake buffers it by its own stage–discharge
+            law. Default 0.0 (no routing). See ``DESIGN_lakes.md``.
 
         Returns
         -------
@@ -2345,7 +2397,7 @@ class Buckets(object):
         # scaled by et_scale and the water-balance multiplier); no soil-moisture
         # water-stress factor, because open water is not moisture-limited.
         E = self.hydrodata['ET for model [mm/day]'][time_step]
-        res.recharge(P - E)
+        res.recharge(P - E + routed_inflow)
         res.discharge(self.dt)
         return res.H_discharge
 
@@ -2464,21 +2516,44 @@ class Buckets(object):
         flux_direct    = 0.0
         flux_tile      = 0.0
         flux_multipath = 0.0
-        for sc in self.sub_catchments:
-            a = sc.area_fraction
+
+        # Two passes so a lake can receive its partner land zone's *current*
+        # step discharge (channelized routing) within the same day. Pass 1
+        # advances the land zones and records their per-unit-area discharge;
+        # pass 2 advances the lakes, injecting the routed inflow before each
+        # lake's outlet step. With no lake (or f_route_lake = 0) this is
+        # identical to the single-pass aggregation.
+        _land_qi = {}
+        for sc in self.sub_catchments:        # pass 1: land
             if sc.kind == 'lake':
-                qi_sc = self._advance_lake(time_step, sc)
-                dr_sc = tile_sc = mp_sc = 0.0
-            else:
-                qi_sc, dr_sc, tile_sc, mp_sc = self._advance_sub_catchment(
-                    time_step, sc)
-            qi             += a * qi_sc
+                continue
+            a = sc.area_fraction
+            qi_sc, dr_sc, tile_sc, mp_sc = self._advance_sub_catchment(
+                time_step, sc)
+            _land_qi[id(sc)] = qi_sc
+            # The fraction of this zone's discharge routed into lakes does not
+            # reach the gauge directly; the lakes release it via their outlets.
+            qi             += a * qi_sc * (1.0 - sc._routed_away_fraction)
             if self.has_snowpack and sc.snowpack is not None:
                 swe        += a * sc.snowpack.Hwater
             storage        += a * self._sub_catchment_storage(sc)
             flux_direct    += a * dr_sc
             flux_tile      += a * tile_sc
             flux_multipath += a * mp_sc
+
+        for sc in self.sub_catchments:        # pass 2: lakes
+            if sc.kind != 'lake':
+                continue
+            a = sc.area_fraction
+            routed_in = 0.0
+            if sc.f_route_lake > 0.0 and sc.gw_partner is not None:
+                # Convert the partner's land-area discharge to a depth per unit
+                # lake area, volume-conserving across the area difference.
+                routed_in = (sc.f_route_lake
+                             * sc.gw_partner.area_fraction / a
+                             * _land_qi[id(sc.gw_partner)])
+            qi      += a * self._advance_lake(time_step, sc, routed_in)
+            storage += a * self._sub_catchment_storage(sc)
 
         # Record per-step flux-partition components (mm/day) for diagnostics
         # and BMI coupling.  These are already reflected in the total
@@ -2650,12 +2725,19 @@ class Buckets(object):
                                  for sc in self.sub_catchments], dtype=np.int64)
             _lake_partner_res  = np.full(self.n_sub_catchments, -1, dtype=np.int64)
             _lake_partner_area = np.zeros(self.n_sub_catchments, dtype=np.float64)
+            _lake_partner_sc   = np.full(self.n_sub_catchments, -1, dtype=np.int64)
+            _f_route_lake      = np.zeros(self.n_sub_catchments, dtype=np.float64)
+            _routed_away       = np.array(
+                [sc._routed_away_fraction for sc in self.sub_catchments],
+                dtype=np.float64)
             _sc_idx = {id(sc): k for k, sc in enumerate(self.sub_catchments)}
             for _k, _sc in enumerate(self.sub_catchments):
                 if _sc.kind == 'lake' and _sc.gw_partner is not None:
                     _pk = _sc_idx[id(_sc.gw_partner)]
                     _lake_partner_res[_k]  = _sc_end[_pk] - 1
                     _lake_partner_area[_k] = self.sub_catchments[_pk].area_fraction
+                    _lake_partner_sc[_k]   = _pk
+                    _f_route_lake[_k]      = _sc.f_route_lake
 
             _jmap = {'fraction': 0, 'leakance': 1, 'threshold': 2}
             (_Q, _SWE, _Hsub, _Hres_out, _finalH, _finalHTile, _finalSnow,
@@ -2707,6 +2789,9 @@ class Buckets(object):
                 _is_lake,
                 _lake_partner_res,
                 _lake_partner_area,
+                _f_route_lake,
+                _routed_away,
+                _lake_partner_sc,
             )
             self.hydrodata.loc[_idx, 'Specific Discharge (modeled) [mm/day]'] = _Q
             if self.has_snowpack:

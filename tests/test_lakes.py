@@ -120,9 +120,11 @@ def test_lake_runs(tmp_path):
     assert np.isfinite(_num(b.hydrodata, Q_COL)).any()
 
 
-def test_lake_jit_matches_pure_python(tmp_path):
+@pytest.mark.parametrize("f_route", [0.0, 0.8])
+def test_lake_jit_matches_pure_python(tmp_path, f_route):
     """The Numba JIT and the pure-Python loop agree to round-off for a
-    land+lake basin with snowpack, a threshold outlet, and Q_gw active."""
+    land+lake basin with snowpack, a threshold outlet, Q_gw, and channelized
+    routing (f_route_lake) active."""
     pytest.importorskip("numba", exc_type=ImportError)
     import mnished.mnished as _m
     cfg = {
@@ -144,7 +146,7 @@ def test_lake_jit_matches_pure_python(tmp_path):
                  'water_reservoir_effective_depths__mm': [8, 350]}},
             {'name': 'lake', 'kind': 'lake', 'area_fraction': 0.35,
              'lake': {'outflow_coefficient': 0.05, 'sill_storage__mm': 180.0,
-                      'gw_partner': 'upland'},
+                      'gw_partner': 'upland', 'f_route_lake': f_route},
              'initial_conditions': {'lake_storage__mm': 260.0}}],
     }
     cfg_path = _write(tmp_path, cfg)
@@ -215,9 +217,73 @@ def test_lake_discharges_toward_sill(tmp_path):
 # Validation / guards
 # ---------------------------------------------------------------------------
 
-def test_f_route_lake_nonzero_not_implemented(tmp_path):
-    with pytest.raises(NotImplementedError):
-        _init(tmp_path, [_land(0.7), _lake(0.3, f_route_lake=0.2)])
+def test_f_route_lake_out_of_range_raises(tmp_path):
+    for bad in (-0.1, 1.5):
+        with pytest.raises(ValueError):
+            _init(tmp_path, [_land(0.7), _lake(0.3, f_route_lake=bad)])
+
+
+def test_f_route_lake_accepted_and_stored(tmp_path):
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, f_route_lake=0.6)])
+    assert b.sub_catchments[1].f_route_lake == 0.6
+
+
+def test_f_route_lake_requires_routing_source(tmp_path):
+    """f_route_lake > 0 with several land zones and no named partner has no
+    routing source and must raise."""
+    with pytest.raises(ValueError, match="routing source"):
+        _init(tmp_path, [_land(0.4, name='a'), _land(0.3, name='b'),
+                         _lake(0.3, f_route_lake=0.5)])
+
+
+def test_f_route_over_diversion_raises(tmp_path):
+    """A land zone cannot route more than 100% of its discharge into lakes."""
+    with pytest.raises(ValueError, match="exceeds 1"):
+        _init(tmp_path, [
+            _land(0.4, name='land'),
+            _lake(0.3, name='lk1', gw_partner='land', f_route_lake=0.6),
+            _lake(0.3, name='lk2', gw_partner='land', f_route_lake=0.6)])
+
+
+def test_routed_away_fraction_recorded(tmp_path):
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, f_route_lake=0.5)])
+    assert b.sub_catchments[0]._routed_away_fraction == 0.5
+
+
+@pytest.mark.parametrize("f_route", [0.0, 0.5, 1.0])
+def test_f_route_mass_balance_closes(tmp_path, f_route):
+    """Routing is internal (land -> lake); the basin balance closes for any
+    f_route_lake."""
+    b = _init(tmp_path, [_land(0.7), _lake(0.3, sill=200.0, h0=250.0,
+                                           f_route_lake=f_route)])
+
+    def storage():
+        return sum(sc.area_fraction * sum(r.Hwater for r in sc.reservoirs)
+                   for sc in b.sub_catchments)
+    s0 = storage()
+    b.run()
+    s1 = storage()
+    hd = b.hydrodata
+    P, ET, Qm = (_num(hd, 'Precipitation [mm/day]'),
+                 _num(hd, 'ET for model [mm/day]'), _num(hd, Q_COL))
+    mask = np.isfinite(Qm)
+    residual = np.nansum((P - ET)[mask]) - np.nansum(Qm[mask]) - (s1 - s0)
+    assert residual == pytest.approx(0.0, abs=1e-6)
+
+
+def test_f_route_buffers_flow(tmp_path):
+    """Routing land discharge through the lake changes the hydrograph: more
+    water is held in lake storage than with the lake disconnected."""
+    def run(f_route):
+        b = _init(tmp_path, [_land(0.7),
+                             _lake(0.3, sill=200.0, h0=250.0,
+                                   f_route_lake=f_route)])
+        b.run()
+        return b.sub_catchments[1].reservoirs[0].Hwater
+
+    h_off = run(0.0)
+    h_on = run(1.0)
+    assert h_on > h_off   # routed inflow raises lake storage
 
 
 def test_lake_requires_positive_outflow_coefficient(tmp_path):
