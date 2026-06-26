@@ -10,8 +10,10 @@ mnished.ScoringModel and reuses it for every evaluation.
     python calibrate.py sceua [reps]            # best-fit (SCE-UA)
     python calibrate.py dream [reps] [iid|ar1]  # posterior / UQ (DREAM)
 
-Phase 1: flat single-cascade parameters (name / name[i] targets). Sub-catchment
-and lake targets (nested) are a planned extension (MNiMORPH/MNiShed#20).
+Targets may be flat single-cascade (``name`` / ``name[i]``) or nested
+sub-catchment / lake (``sub_catchments[I].key[j]``, with ``I`` a shared-index
+list such as ``0,1`` for a parameter common to several zones — e.g. Crow Wing's
+two land zones). See MNiMORPH/MNiShed#20.
 """
 
 import re
@@ -30,29 +32,57 @@ P, DRV, MOD = _CFG['parameters'], _CFG['driver'], _CFG.get('modules', {})
 PSET = ParameterSet.from_params_yml(P)
 NAMES = PSET.names
 START, END = DRV.get('decade_start'), DRV.get('decade_end')
+with open(DRV['config_template']) as f:
+    N_SUB = len(yaml.safe_load(f).get('sub_catchments', [])) or 1
 
 
-def build_kwargs(theta):
+def build_kwargs(params, theta, n_sub=1):
     """Assemble run_and_score keywords from each parameter's `target`.
 
-    ``name[i]`` -> a list keyword at position i (grouped across parameters);
-    bare ``name`` -> a scalar keyword; a ``log__`` prefix applies 10**.
+    Flat targets:
+      ``name``      -> a scalar keyword
+      ``name[i]``   -> a list keyword at position i (grouped across parameters)
+    Nested (sub-catchment) targets:
+      ``sub_catchments[I].key``     -> a scalar override on sub-catchment(s) I
+      ``sub_catchments[I].key[j]``  -> a list override, position j
+    where I is an index or comma-list (e.g. ``0,1`` for a parameter shared
+    across zones). A ``log__`` prefix applies 10** to the value. Untargeted list
+    positions are left ``None`` (run_and_score keeps the config value), so a
+    parameter need only name the elements it actually calibrates.
     """
-    lists, kw = {}, {}
-    for name, spec in P.items():
+    flat_lists, kw = {}, {}
+    sub_lists, sub_scalar = {}, {}
+    for name, spec in params.items():
         target = spec.get('target')
         if not target:
             continue
         val = theta.get(name, spec['fixed'])
         if name.startswith('log__'):
             val = 10.0 ** val
-        m = re.fullmatch(r'(\w+)\[(\d+)\]', target)
-        if m:
-            lists.setdefault(m.group(1), {})[int(m.group(2))] = val
+        nested = re.fullmatch(r'sub_catchments\[([\d,]+)\]\.(.+)', target)
+        if nested:
+            rest = re.fullmatch(r'(\w+)\[(\d+)\]', nested.group(2))
+            for i in (int(x) for x in nested.group(1).split(',')):
+                if rest:
+                    sub_lists.setdefault(
+                        (i, rest.group(1)), {})[int(rest.group(2))] = val
+                else:
+                    sub_scalar[(i, nested.group(2))] = val
+            continue
+        flat = re.fullmatch(r'(\w+)\[(\d+)\]', target)
+        if flat:
+            flat_lists.setdefault(flat.group(1), {})[int(flat.group(2))] = val
         else:
             kw[target] = val
-    for key, idx in lists.items():
-        kw[key] = [idx[i] for i in range(max(idx) + 1)]
+    for key, idx in flat_lists.items():
+        kw[key] = [idx.get(i) for i in range(max(idx) + 1)]
+    if sub_lists or sub_scalar:
+        sub = [{} for _ in range(n_sub)]
+        for (i, key), idx in sub_lists.items():
+            sub[i][key] = [idx.get(j) for j in range(max(idx) + 1)]
+        for (i, key), v in sub_scalar.items():
+            sub[i][key] = v
+        kw['sub_catchments'] = sub
     return kw
 
 
@@ -90,7 +120,7 @@ class Calibration:
         return self.model.score(modules=MOD, routing_N=DRV['routing_N'],
                                 spin_up_cycles=DRV['spin_up_cycles'],
                                 metric=DRV['metric'], start=START, end=END,
-                                **build_kwargs(theta))
+                                **build_kwargs(P, theta, N_SUB))
 
     def parameters(self):
         return spotpy.parameter.generate(self.params)
