@@ -67,11 +67,13 @@ storage is physically continuous across decade boundaries.
 
 import copy
 import math
+import re
 import warnings
 from collections import namedtuple
 
 import numpy as np
 import pandas as pd
+import yaml
 
 from .mnished import Buckets, Reservoir
 
@@ -1333,3 +1335,139 @@ class ScoringModel:
         return run_and_score(self.cfg,
                              enforce_water_balance=self.enforce_water_balance,
                              _model=self, **kwargs)
+
+
+def target_kwargs(parameters, theta, n_sub=1):
+    """Map declarative parameter ``target``\\ s to :func:`run_and_score` keywords.
+
+    ``parameters`` is a config ``parameters`` block: a dict of
+    ``{name: {target, fixed, ...}}``. ``theta`` gives the current value of each
+    free parameter by name (a parameter absent from ``theta`` uses its
+    ``fixed`` value). Each parameter's ``target`` declares where its value goes:
+
+    * ``name``                    -> a scalar keyword
+    * ``name[i]``                 -> a list keyword at position i
+    * ``sub_catchments[I].key``   -> a scalar override on sub-catchment(s) I
+    * ``sub_catchments[I].key[j]``-> a list override, position j
+
+    ``I`` is an index or comma-list (``0,1`` for a parameter shared across
+    zones). A ``log__`` name prefix applies ``10**`` to the value. Untargeted
+    list positions are left ``None`` (run_and_score keeps the config value), so
+    a parameter need only name the elements it calibrates. ``n_sub`` is the
+    number of sub-catchments (sizes the positional ``sub_catchments`` override).
+
+    Parameters without a ``target`` are ignored, so non-model entries (e.g. a
+    sampled error-model nuisance parameter) can coexist in the config.
+    """
+    flat_lists, kw = {}, {}
+    sub_lists, sub_scalar = {}, {}
+    for name, spec in parameters.items():
+        target = spec.get('target')
+        if not target:
+            continue
+        val = theta.get(name, spec.get('fixed'))
+        if name.startswith('log__'):
+            val = 10.0 ** val
+        nested = re.fullmatch(r'sub_catchments\[([\d,]+)\]\.(.+)', target)
+        if nested:
+            rest = re.fullmatch(r'(\w+)\[(\d+)\]', nested.group(2))
+            for i in (int(x) for x in nested.group(1).split(',')):
+                if rest:
+                    sub_lists.setdefault(
+                        (i, rest.group(1)), {})[int(rest.group(2))] = val
+                else:
+                    sub_scalar[(i, nested.group(2))] = val
+            continue
+        flat = re.fullmatch(r'(\w+)\[(\d+)\]', target)
+        if flat:
+            flat_lists.setdefault(flat.group(1), {})[int(flat.group(2))] = val
+        else:
+            kw[target] = val
+    for key, idx in flat_lists.items():
+        kw[key] = [idx.get(i) for i in range(max(idx) + 1)]
+    if sub_lists or sub_scalar:
+        sub = [{} for _ in range(n_sub)]
+        for (i, key), idx in sub_lists.items():
+            sub[i][key] = [idx.get(j) for j in range(max(idx) + 1)]
+        for (i, key), v in sub_scalar.items():
+            sub[i][key] = v
+        kw['sub_catchments'] = sub
+    return kw
+
+
+class Calibrator:
+    """A declarative, build-once calibration problem read from a config.
+
+    This is MNiShed's standard model-setup for calibration: the *run method is
+    defined in config, not code*. A config (the ``parameters``, ``driver``, and
+    ``modules`` blocks of a ``params.yml``) names the free parameters, their
+    bounds, and — via each parameter's ``target`` (see :func:`target_kwargs`) —
+    where each maps in the model. ``Calibrator`` ties that together with a
+    build-once :class:`ScoringModel`, so any sampler or optimiser needs only to
+    call :meth:`score`; there is no per-basin Python.
+
+    It is sampler-agnostic (no optimiser dependency): point SciPy, SPOTPY
+    (SCE-UA / DREAM), or any driver at :meth:`score` and
+    :attr:`parameter_set` (the free parameters and bounds).
+
+    Parameters
+    ----------
+    parameters : dict
+        The ``parameters`` block (each entry with bounds and a ``target``).
+    driver : dict
+        Run settings: ``config_template`` (the model YAML), ``metric``,
+        ``spin_up_cycles``, ``routing_N``, optional ``decade_start`` /
+        ``decade_end`` and ``enforce_water_balance``.
+    modules : dict, optional
+        Process-module toggles, applied per evaluation.
+
+    Examples
+    --------
+    >>> cal = Calibrator.from_yaml('params.yml')
+    >>> cal.score({'log__t_recession_shallow': 1.4, ...}).score
+    >>> cal.score(vector).score        # vector ordered as cal.names
+    """
+
+    def __init__(self, parameters, driver, modules=None):
+        from .identifiability import ParameterSet
+        self.parameters = parameters
+        self.driver = driver
+        self.modules = modules or {}
+        self.parameter_set = ParameterSet.from_params_yml(parameters)
+        self.names = self.parameter_set.names
+        self.model = ScoringModel(
+            driver['config_template'],
+            enforce_water_balance=driver.get('enforce_water_balance',
+                                             'water-year'))
+        with open(driver['config_template']) as f:
+            self.n_sub = len(yaml.safe_load(f).get('sub_catchments', [])) or 1
+
+    @classmethod
+    def from_yaml(cls, path):
+        """Build a :class:`Calibrator` from a ``params.yml`` path."""
+        with open(path) as f:
+            cfg = yaml.safe_load(f)
+        return cls(cfg['parameters'], cfg['driver'], cfg.get('modules'))
+
+    def run_kwargs(self, theta):
+        """The :func:`run_and_score` keywords for a parameter dict."""
+        return target_kwargs(self.parameters, theta, self.n_sub)
+
+    def score(self, theta, start=None, end=None, metric=None):
+        """Score one parameter set, reusing the build-once model.
+
+        ``theta`` is a ``{name: value}`` dict or a vector ordered as
+        :attr:`names`. ``start`` / ``end`` / ``metric`` default to the driver
+        config. Returns a :class:`CalibResult` — identical to the equivalent
+        :func:`run_and_score` call.
+        """
+        if not isinstance(theta, dict):
+            theta = dict(zip(self.names, theta))
+        d = self.driver
+        return self.model.score(
+            modules=self.modules, routing_N=d['routing_N'],
+            spin_up_cycles=d['spin_up_cycles'],
+            metric=metric if metric is not None else d['metric'],
+            start=start if start is not None else d.get('decade_start'),
+            end=end if end is not None else d.get('decade_end'),
+            **self.run_kwargs(theta))

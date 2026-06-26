@@ -1,9 +1,11 @@
 from ._version import __version__
 from .calibration import (
     CalibResult,
+    Calibrator,
     ScoringModel,
     log_flow_residual_terms,
     run_and_score,
+    target_kwargs,
 )
 from .hydrograph_separation import HydrographSeparation
 from .identifiability import (
@@ -27,6 +29,8 @@ __all__ = [
     "CalibResult",
     "run_and_score",
     "ScoringModel",
+    "Calibrator",
+    "target_kwargs",
     "log_flow_residual_terms",
     "HydrographSeparation",
     "BrutsaertNieber",
