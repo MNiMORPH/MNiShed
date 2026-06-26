@@ -1187,3 +1187,63 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         final_states = final_states,
         buckets      = b,
     )
+
+
+def log_flow_residual_terms(result, start=None, end=None, eps=None):
+    """Per-day scored log-flow terms for Bayesian calibration.
+
+    Reproduces :func:`run_and_score`'s scoring mask (observed *and*
+    modelled discharge both present, within ``[start, end]``) on a
+    :class:`CalibResult`'s ``buckets``, and returns the log-transformed
+    observed and modelled flows whose difference is the Gaussian log-flow
+    residual that the AIC — and a Dakota ``bayes_calibration`` — use.
+
+    The mask is **independent of the calibrated parameters** (it depends
+    only on observation availability), so across a calibration the day set
+    and the ``log_obs`` column are fixed and only ``log_mod`` changes.
+    That lets a Bayesian driver return ``log_mod`` as ``calibration_terms``
+    against a once-computed ``log_obs`` ``calibration_data_file``.
+
+    Parameters
+    ----------
+    result : CalibResult
+        A result whose ``.buckets`` holds the run's ``hydrodata`` frame
+        (i.e. the modelled discharge has been written back, as
+        :func:`run_and_score` does before returning).
+    start, end : str or pandas.Timestamp, optional
+        Scoring-window bounds; pass the same values given to
+        :func:`run_and_score` so the day set matches the scored window.
+    eps : float, optional
+        Stabilising offset added before the log.  Defaults to 1 % of the
+        mean scored observed flow, matching :func:`run_and_score`.
+
+    Returns
+    -------
+    pandas.DataFrame
+        One row per scored day, with columns ``date``, ``obs``, ``mod``,
+        ``log_obs``, ``log_mod`` and ``residual`` (= ``log_mod -
+        log_obs``).
+    """
+    h = result.buckets.hydrodata
+    q_obs = pd.to_numeric(h['Specific Discharge [mm/day]'], errors='coerce')
+    q_mod = pd.to_numeric(
+        h['Specific Discharge (modeled) [mm/day]'], errors='coerce')
+    mask = q_mod.notna() & q_obs.notna()
+    if start is not None:
+        mask &= h['Date'] >= pd.Timestamp(start)
+    if end is not None:
+        mask &= h['Date'] <= pd.Timestamp(end)
+    o = q_obs[mask].to_numpy(dtype=float)
+    m = q_mod[mask].to_numpy(dtype=float)
+    if eps is None:
+        eps = 0.01 * o.mean()
+    log_o = np.log(o + eps)
+    log_m = np.log(m + eps)
+    return pd.DataFrame({
+        'date':     h['Date'][mask].to_numpy(),
+        'obs':      o,
+        'mod':      m,
+        'log_obs':  log_o,
+        'log_mod':  log_m,
+        'residual': log_m - log_o,
+    })
