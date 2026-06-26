@@ -252,7 +252,7 @@ The Calibrator
 ^^^^^^^^^^^^^^
 
 .. autoclass:: mnished.Calibrator
-   :members: from_yaml, score, run_kwargs
+   :members: from_yaml, score, score_windows, run_kwargs
    :no-index:
 
 ``Calibrator`` builds the model **once** (via :class:`~mnished.ScoringModel`)
@@ -268,6 +268,29 @@ point any optimizer or sampler at ``score`` and ``parameter_set``:
    result = cal.score({'log__t_recession_shallow': 1.4,
                        'f_exfiltration_shallow': 0.6})   # or a vector ordered as cal.names
    result.score                                # the metric (result is a CalibResult)
+
+Calibration windows
+^^^^^^^^^^^^^^^^^^^^
+
+The scoring span is set in one place — the driver's ``decades:`` key, a list of
+``{start, end}`` windows (``None`` = full record):
+
+.. code-block:: yaml
+
+   driver:
+     decades:
+       - {start: '1991-01-01', end: '2000-12-31'}
+       - {start: '2001-01-01', end: '2010-12-31'}
+
+:meth:`~mnished.Calibrator.score_windows` scores a parameter set on each window
+and returns one ``CalibResult`` per window; how to aggregate them — a mean score
+for an optimizer, concatenated residuals for a likelihood — is the caller's
+choice, so the Calibrator stays sampler-agnostic. The single-window
+``decade_start`` / ``decade_end`` driver keys are a shorthand for a one-element
+``decades:`` list, and :meth:`~mnished.Calibrator.score` scores that first (or
+only) window; both spellings flow through the same mechanism. (``decades:`` is
+named for its original decadal-backbone use; it generalizes to any windows and
+will be renamed ``windows:`` in v4.0 — MNiMORPH/MNiShed#24.)
 
 Build once, score many
 ^^^^^^^^^^^^^^^^^^^^^^^

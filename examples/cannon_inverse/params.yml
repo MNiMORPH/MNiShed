@@ -23,6 +23,12 @@ driver:
   metric:         'KGE_logKGE_logFDC'  # KGE (peaks) + logKGE (low-flow timing) + KGE_logFDC (flow regime)
   spin_up_cycles: 3
   routing_N:      2        # Nash-cascade shape parameter (fixed)
+  # Calibration window(s). decade_start/decade_end is the single-window
+  # shorthand (null = full record); for a multi-window objective list them
+  # under `decades:` instead (renamed `windows:` in v4.0, see #24), e.g.:
+  #   decades:
+  #     - {start: '1991-01-01', end: '2000-12-31'}
+  #     - {start: '2001-01-01', end: '2010-12-31'}
   decade_start:   null     # null = full record; e.g. '1990-01-01' for a decade
   decade_end:     null
 

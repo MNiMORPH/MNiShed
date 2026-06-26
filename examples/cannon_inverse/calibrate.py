@@ -25,7 +25,7 @@ from mnished import Calibrator, log_flow_residual_terms
 
 CAL = Calibrator.from_yaml('params.yml')
 NAMES = CAL.names
-START, END = CAL.driver.get('decade_start'), CAL.driver.get('decade_end')
+WINDOWS = CAL.windows                   # one window, or several (driver `decades:`)
 
 
 def _ar1_loglike(r, phi):
@@ -52,9 +52,13 @@ class Setup:
             self.params.append(spotpy.parameter.Uniform('likelihood_phi1',
                                                         0.0, 0.99, optguess=0.9))
         if likelihood:                        # observed log-flows (fixed): compute once
-            ref = CAL.score({p.name: p.value for p in CAL.parameter_set})
-            self.log_obs = log_flow_residual_terms(
-                ref, start=START, end=END)['log_obs'].to_numpy()
+            refs = CAL.score_windows(
+                {p.name: p.value for p in CAL.parameter_set})
+            parts = [log_flow_residual_terms(r, start=w['start'],
+                                             end=w['end'])['log_obs'].to_numpy()
+                     for r, w in zip(refs, WINDOWS)]
+            self.log_obs = np.concatenate(parts)
+            self._window_lens = [len(p) for p in parts]   # for per-window AR(1)
 
     def parameters(self):
         return spotpy.parameter.generate(self.params)
@@ -65,21 +69,31 @@ class Setup:
             self._phi = float(vector[len(NAMES)])
             vector = vector[:len(NAMES)]
         try:
-            res = CAL.score(dict(zip(NAMES, vector)))
+            results = CAL.score_windows(dict(zip(NAMES, vector)))
         except Exception:
             return list(self.log_obs - 10.0) if self.likelihood else [-10.0]
-        if self.likelihood:
-            return list(log_flow_residual_terms(
-                res, start=START, end=END)['log_mod'].to_numpy())
-        return [res.score if np.isfinite(res.score) else -10.0]
+        if self.likelihood:                   # residuals concatenated across windows
+            return list(np.concatenate([
+                log_flow_residual_terms(r, start=w['start'], end=w['end'])['log_mod'].to_numpy()
+                for r, w in zip(results, WINDOWS)]))
+        scores = [r.score if np.isfinite(r.score) else -10.0 for r in results]
+        return [float(np.mean(scores))]       # mean KGE over windows
 
     def evaluation(self):
         return list(self.log_obs) if self.likelihood else [1.0]
 
     def objectivefunction(self, simulation, evaluation):
         if self.likelihood == 'ar1':
-            return _ar1_loglike(np.asarray(simulation) - np.asarray(evaluation),
-                                self._phi)
+            # Whiten each window's residuals on their own and sum the
+            # log-likelihoods: windows are disjoint in time, so the AR(1) lag
+            # must not cross a boundary (that would invent a correlation
+            # between residuals decades apart).
+            r = np.asarray(simulation) - np.asarray(evaluation)
+            ll, i = 0.0, 0
+            for n in self._window_lens:
+                ll += _ar1_loglike(r[i:i + n], self._phi)
+                i += n
+            return ll
         if self.likelihood == 'iid':
             return spotpy.likelihoods.gaussianLikelihoodMeasErrorOut(
                 evaluation, simulation)
