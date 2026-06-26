@@ -1567,8 +1567,20 @@ class Buckets(object):
                     "'gw_partner' (the land sub-catchment whose discharge "
                     "routes through the lake).")
 
-        # Aggregate the routed-away fraction onto each land zone (its discharge
-        # can feed at most 100% into the lakes it supplies).
+        # Aggregate the routed-away fraction onto each land zone.
+        self._resolve_routed_away_fractions()
+
+    def _resolve_routed_away_fractions(self):
+        """Recompute each land zone's routed-away fraction from the current
+        ``f_route_lake`` of every lake it feeds (a land zone can feed at most
+        100% of its discharge into the lakes it supplies).
+
+        Recomputed from scratch on each call, so it is safe to re-run after a
+        lake's ``f_route_lake`` is changed — e.g. by a calibration override in
+        :func:`~mnished.run_and_score`.  This keeps the land-zone discharge
+        *reduction* consistent with the live routing *inflow*, which reads
+        ``f_route_lake`` directly.
+        """
         for sc in self.sub_catchments:
             sc._routed_away_fraction = 0.0
         for lake in self.sub_catchments:
