@@ -65,6 +65,7 @@ the next decade's run_and_score() call with spin_up_cycles=0 so that water
 storage is physically continuous across decade boundaries.
 """
 
+import copy
 import math
 import warnings
 from collections import namedtuple
@@ -647,7 +648,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   post_spinup_states=None, post_spinup_k=0,
                   start=None, end=None, spin_up_cycles=None,
                   metric='KGE', routing_N=2, routing_K=None,
-                  enforce_water_balance='water-year'):
+                  enforce_water_balance='water-year', _model=None):
     """
     Run MNiShed and return a CalibResult named tuple.
 
@@ -874,8 +875,13 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     _validate_finite_states(initial_states, 'initial_states')
     _validate_finite_states(post_spinup_states, 'post_spinup_states')
 
-    b = Buckets()
-    b.initialize(cfg, enforce_water_balance=enforce_water_balance)
+    if _model is not None:
+        # Reuse a pre-built model (forcing read, construction, and base ET
+        # already done once): a fresh copy of the template, no CSV re-read.
+        b = _model._fresh_buckets()
+    else:
+        b = Buckets()
+        b.initialize(cfg, enforce_water_balance=enforce_water_balance)
 
     # --- Module flag overrides (must precede parameter overrides that depend on them) ---
     if modules is not None:
@@ -1273,3 +1279,57 @@ def log_flow_residual_terms(result, start=None, end=None, eps=None):
         'log_mod':  log_m,
         'residual': log_m - log_o,
     })
+
+
+class ScoringModel:
+    """Build-once, score-many wrapper around :func:`run_and_score`.
+
+    Building a model from a config reads the forcing CSV, constructs the
+    sub-catchment/reservoir cascade, and computes the base ET — work that is
+    independent of the calibrated parameters but that :func:`run_and_score`
+    otherwise repeats on every call. For an in-process optimiser or sampler
+    (thousands of evaluations) that rebuild dominates the wall-clock, and a
+    multi-window objective re-reads the same CSV once per window per eval.
+
+    ``ScoringModel`` does the build once; :meth:`score` then reuses a fresh
+    copy of the template for each evaluation (a deep copy of the built model is
+    ~free relative to a re-initialise) and is **bit-identical** to the
+    equivalent :func:`run_and_score` call — that equivalence is the contract.
+
+    Parameters
+    ----------
+    cfg : str
+        Path to the YAML config, as for :func:`run_and_score`.
+    enforce_water_balance : str, optional
+        Water-balance closure mode. Fixed for the model's lifetime (it is a
+        structural choice, not a calibrated parameter). Default 'water-year'.
+
+    Examples
+    --------
+    >>> sm = ScoringModel('config.yml', enforce_water_balance='none')
+    >>> r = sm.score(recession_coeff=[14, 500], et_scale=0.8,
+    ...              start='2001-01-01', end='2010-12-31', metric='KGE')
+    >>> r.score                       # identical to the run_and_score call
+    """
+
+    def __init__(self, cfg, enforce_water_balance='water-year'):
+        self.cfg = cfg
+        self.enforce_water_balance = enforce_water_balance
+        self._template = Buckets()
+        self._template.initialize(
+            cfg, enforce_water_balance=enforce_water_balance)
+
+    def _fresh_buckets(self):
+        """A clean copy of the built template (no CSV re-read / rebuild)."""
+        return copy.deepcopy(self._template)
+
+    def score(self, **kwargs):
+        """Score one parameter set, reusing the pre-built model.
+
+        Takes the same keyword arguments as :func:`run_and_score` other than
+        ``cfg`` and ``enforce_water_balance`` (fixed at construction) and
+        returns the same :class:`CalibResult`.
+        """
+        return run_and_score(self.cfg,
+                             enforce_water_balance=self.enforce_water_balance,
+                             _model=self, **kwargs)
