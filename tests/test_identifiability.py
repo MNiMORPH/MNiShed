@@ -20,12 +20,8 @@ import numpy as np
 import pytest
 
 from mnished.identifiability import (
-    IdentifiabilityReport,
     Parameter,
     ParameterSet,
-    Profile,
-    Ridge2D,
-    Spectrum,
     eigenspectrum,
     profile,
     profile_all,
