@@ -302,6 +302,28 @@ class Profile:
         return bool((best == 0 or best == len(self.score) - 1)
                     and self.score[best] > self.score_opt + delta)
 
+    def plot(self, ax=None, delta=0.01):
+        """Plot the profile: score vs the swept parameter.
+
+        Marks the held optimum, the ``peak − delta`` line whose crossings
+        bound the Δ-flat half-width, and shades the parameter's bounds.
+        """
+        import matplotlib.pyplot as plt
+        if ax is None:
+            _, ax = plt.subplots()
+        ax.plot(self.x, self.score, "-o", ms=3)
+        ax.axvline(self.x_opt, color="k", ls="--", lw=1, label="optimum")
+        ax.axhline(self.score_opt - delta, color="r", ls=":", lw=1,
+                   label=f"peak − {delta:g}")
+        label = self.name + (" [log10]" if self.parameter.log else "")
+        ax.set_xlabel(label)
+        ax.set_ylabel("score")
+        flag = " PEGGED" if self.at_bound() else ""
+        ax.set_title(f"{self.name}  "
+                     f"(half-width = {self.half_width(delta):.2f}{flag})")
+        ax.legend(loc="lower center", fontsize="small")
+        return ax
+
     def __repr__(self):
         return (f"Profile({self.name!r}, n={len(self.x)}, "
                 f"half_width={self.half_width():.3f}, "
@@ -427,6 +449,31 @@ class IdentifiabilityReport:
             lines.append("a-priori prediction: (not available — awaits "
                          "Ksat / drainage-topology tools)")
         return "\n".join(lines)
+
+    def plot(self, ax=None, delta=0.01):
+        """Headline identifiability chart: Δ-flat half-width per parameter.
+
+        Longer bars are less constrained by the data; bars for parameters
+        pegged at a bound are coloured red.  For the *combination* picture
+        call :meth:`Spectrum.plot` on ``self.spectrum``.
+        """
+        import matplotlib.pyplot as plt
+        if ax is None:
+            _, ax = plt.subplots()
+        names = self.pset.names
+        hw = [self.profiles[n].half_width(delta) for n in names]
+        pegged = [self.profiles[n].at_bound() for n in names]
+        y = range(len(names))
+        ax.barh(list(y), hw,
+                color=["tab:red" if p else "tab:blue" for p in pegged])
+        ax.set_yticks(list(y))
+        ax.set_yticklabels(names)
+        ax.invert_yaxis()
+        ax.set_xlabel(f"Δ-flat half-width (frac of range within {delta:g} "
+                      "of peak; large = unconstrained)")
+        ax.set_title("parameter identifiability"
+                     + ("" if self.aic is None else f"  (AIC {self.aic:.1f})"))
+        return ax
 
     def __repr__(self):
         return (f"IdentifiabilityReport(n_params={len(self.pset)}, "
@@ -561,6 +608,43 @@ class Spectrum:
             lines.append(f"{k:>2} {ws}  {self.describe_direction(k)}{tag}")
         return "\n".join(lines)
 
+    def plot(self, axes=None, rel_tol=1e-3):
+        """Plot the eigenspectrum and the eigenvector loadings.
+
+        Left: stiffness per eigen-direction (symlog, so the negative
+        values that appear when the supplied point is not a true maximum
+        are visible).  Right: a loading heat-map whose columns are the
+        eigenvectors — read down a sloppy column to *name* the degenerate
+        combination.
+        """
+        import matplotlib.pyplot as plt
+        if axes is None:
+            _, axes = plt.subplots(
+                1, 2, figsize=(11, 5),
+                gridspec_kw={"width_ratios": [1, 1.3]})
+        ax0, ax1 = axes
+        k = np.arange(len(self.eigvals))
+        wmax = np.nanmax(np.abs(self.eigvals))
+        linthresh = max(1e-9, 1e-3 * wmax) if np.isfinite(wmax) else 1e-9
+        sloppy = (np.isfinite(self.eigvals)
+                  & (self.eigvals < rel_tol * np.nanmax(self.eigvals)))
+        ax0.bar(k, self.eigvals,
+                color=["tab:red" if s else "tab:blue" for s in sloppy])
+        ax0.set_yscale("symlog", linthresh=linthresh)
+        ax0.set_xlabel("eigen-direction (stiff → sloppy)")
+        ax0.set_ylabel("stiffness (eigenvalue)")
+        ax0.set_title(f"condition number = {self.condition_number:.3g}")
+
+        im = ax1.imshow(self.eigvecs, aspect="auto", cmap="RdBu",
+                        vmin=-1, vmax=1)
+        ax1.set_yticks(range(len(self.names)))
+        ax1.set_yticklabels(self.names)
+        ax1.set_xticks(k)
+        ax1.set_xlabel("eigen-direction")
+        ax1.set_title("eigenvector loadings")
+        plt.colorbar(im, ax=ax1, label="loading")
+        return axes
+
     def __repr__(self):
         return (f"Spectrum(n={len(self.names)}, "
                 f"condition_number={self.condition_number:.3g})")
@@ -691,6 +775,33 @@ class Ridge2D:
         _, _, Vt = np.linalg.svd(pts, full_matrices=False)
         v = Vt[0]
         return float(v[0]), float(v[1])
+
+    def plot(self, ax=None, delta=0.01):
+        """Filled score contour over the two parameters (normalized coords).
+
+        Marks the optimum and draws the estimated ridge axis — an
+        elongated bright band along that arrow is the degenerate
+        combination the data cannot separate.
+        """
+        import matplotlib.pyplot as plt
+        if ax is None:
+            _, ax = plt.subplots()
+        A = self.pi.normalize(self.xi)      # axis i (x)
+        B = self.pj.normalize(self.xj)      # axis j (y)
+        # Z[a, b] is score at (xi[a], xj[b]); contourf wants (len(B), len(A))
+        cf = ax.contourf(A, B, self.Z.T, levels=20)
+        plt.colorbar(cf, ax=ax, label="score")
+        cx = float(self.pi.normalize(self.pi.value))
+        cy = float(self.pj.normalize(self.pj.value))
+        ax.plot(cx, cy, "w*", ms=14, markeredgecolor="k")
+        v = self.ridge_axis(delta)
+        if v is not None:
+            ax.annotate("", xy=(cx + 0.3 * v[0], cy + 0.3 * v[1]),
+                        xytext=(cx - 0.3 * v[0], cy - 0.3 * v[1]),
+                        arrowprops=dict(arrowstyle="<->", color="w", lw=2))
+        ax.set_xlabel(self.name_i + " [norm]")
+        ax.set_ylabel(self.name_j + " [norm]")
+        return ax
 
     def __repr__(self):
         ax = self.ridge_axis()
