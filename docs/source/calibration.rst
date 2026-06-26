@@ -4,10 +4,12 @@ Calibration
 MNiShed calibration is built around :func:`~mnished.run_and_score`,
 which runs the model with a given parameter set, applies optional Nash-cascade
 routing and a scoring window, and returns a :class:`~mnished.CalibResult`
-containing all goodness-of-fit metrics.  Integration with an external optimizer
-(e.g. `Dakota <https://dakota.sandia.gov>`_) is achieved by writing a thin
-driver that reads parameter values from the optimizer's output file and calls
-``run_and_score`` with those values.
+containing all goodness-of-fit metrics.  The recommended workflow drives this
+**in-process** via :class:`~mnished.Calibrator`, a config-driven, build-once
+model setup (see *In-process calibration with* ``Calibrator`` below).  An
+external optimizer (e.g. `Dakota <https://dakota.sandia.gov>`_) can be used
+instead via a thin driver that reads parameter values from the optimizer's
+output file and calls ``run_and_score``.
 
 .. contents:: On this page
    :local:
@@ -197,6 +199,113 @@ per-year penalty.
      - Considerably less support for the higher-AIC model.
    * - > 10
      - The higher-AIC model is effectively ruled out.
+
+In-process calibration with ``Calibrator``
+------------------------------------------
+
+The recommended way to calibrate MNiShed is **in-process**: drive the model
+directly from Python with the Numba JIT warm, rather than launching a fresh
+process per evaluation. This is roughly two orders of magnitude faster per
+evaluation than a fork-based external optimizer, and one configuration then
+serves both best-fit optimization and Bayesian uncertainty quantification.
+
+The standard model setup is :class:`~mnished.Calibrator`, in which the *run
+method is declared in config, not code*. A ``params.yml`` names the free
+parameters and their bounds, and each parameter's ``target`` declares where its
+value maps in the model — so one generic runner calibrates any basin with no
+per-basin Python.
+
+Declaring the parameter mapping
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+Each calibrated parameter carries a ``target`` naming its destination in
+:func:`~mnished.run_and_score`:
+
+.. code-block:: yaml
+
+   driver:
+     config_template: model.yml             # the model configuration
+     metric:          KGE_logKGE_logFDC
+     spin_up_cycles:  3
+     routing_N:       2
+
+   parameters:
+     log__t_recession_shallow: {lower: 0.3, upper: 2.0, initial: 1.2, target: recession_coeff[0]}
+     f_exfiltration_shallow:   {lower: 0.01, upper: 0.99, initial: 0.8, target: f_to_discharge[0]}
+     PDD_melt_factor:          {lower: 0.1, upper: 10.0, initial: 1.0, target: melt_factor}
+
+The ``target`` grammar:
+
+* ``name`` — a scalar keyword (e.g. ``melt_factor``).
+* ``name[i]`` — element *i* of a list keyword (e.g. ``recession_coeff[0]``);
+  parameters sharing a keyword are grouped into one list.
+* ``sub_catchments[I].key`` / ``sub_catchments[I].key[j]`` — an override on
+  sub-catchment(s) *I*, where *I* is an index or comma-list (``0,1`` for a
+  parameter shared across zones, e.g. two land zones with common physics, or a
+  lake's ``f_route_lake``).
+* A ``log__`` name prefix applies ``10**`` to the sampled value.
+
+Untargeted list positions are left at their config value, so a parameter need
+only name the elements it calibrates.
+
+The Calibrator
+^^^^^^^^^^^^^^
+
+.. autoclass:: mnished.Calibrator
+   :members: from_yaml, score, run_kwargs
+   :no-index:
+
+``Calibrator`` builds the model **once** (via :class:`~mnished.ScoringModel`)
+and reuses it every evaluation; :meth:`~mnished.Calibrator.score` is
+bit-identical to the equivalent ``run_and_score`` call. It is sampler-agnostic —
+point any optimizer or sampler at ``score`` and ``parameter_set``:
+
+.. code-block:: python
+
+   from mnished import Calibrator
+
+   cal = Calibrator.from_yaml('params.yml')
+   result = cal.score({'log__t_recession_shallow': 1.4,
+                       'f_exfiltration_shallow': 0.6})   # or a vector ordered as cal.names
+   result.score                                # the metric (result is a CalibResult)
+
+Build once, score many
+^^^^^^^^^^^^^^^^^^^^^^^
+
+.. autoclass:: mnished.ScoringModel
+   :no-index:
+
+A plain ``run_and_score`` call re-reads the forcing and reconstructs the model
+each time; for thousands of evaluations that rebuild dominates the wall-clock
+(and a multi-window objective re-reads the forcing once per window per eval).
+``ScoringModel`` — which ``Calibrator`` uses internally — does the build once.
+
+Running a calibration
+^^^^^^^^^^^^^^^^^^^^^^
+
+The ``examples/cannon_inverse/calibrate.py`` runner wires ``Calibrator`` to
+`SPOTPY <https://spotpy.readthedocs.io>`_, exposing both an optimizer (SCE-UA,
+for best-fit) and a Bayesian sampler (DREAM, for the posterior):
+
+.. code-block:: bash
+
+   python calibrate.py sceua 5000          # best-fit
+   python calibrate.py dream 20000 ar1     # posterior (AR(1) log-flow likelihood)
+
+Run with the Numba JIT active (``pip install 'mnished[jit]'``; the JIT requires
+``numpy < 2.3``), and serially: each evaluation returns a long simulation
+vector, so multiprocessing loses more to inter-process transfer than it saves
+on compute.
+
+After a fit, characterise *how well the data constrained each parameter* with
+the ``mnished.identifiability`` tools (per-parameter profiles and a curvature
+eigenspectrum that names stiff vs. degenerate parameter combinations), or run
+DREAM for the full posterior. ``log_flow_residual_terms`` exposes the scored
+log-flow residuals used by the Bayesian likelihood.
+
+For an **external** optimizer instead (e.g. Dakota, for expensive models or
+cluster runs), write a thin driver that calls ``run_and_score`` directly; see
+``examples/cannon_inverse/`` for both paths.
 
 Practical Calibration Workflow
 -------------------------------
