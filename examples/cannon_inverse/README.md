@@ -87,6 +87,32 @@ parameter trade-offs. For a fast, local complement that needs no MCMC, see
 **Note:** DREAM needs many thousands of evaluations, so run with the Numba JIT
 active (the pure-Python fallback is ~100× slower).
 
+## In-process calibration (SPOTPY — no Dakota)
+
+The Dakota workflows above fork a fresh Python process per evaluation (~1.5 s of
+interpreter startup each); for a fast model on a workstation that overhead
+dominates. **In-process SPOTPY** calls the model directly with the Numba JIT
+warm — ~100× faster per evaluation — and offers both an optimiser (SCE-UA) and a
+Bayesian sampler (DREAM) on the same setup.
+
+```bash
+conda activate mnished-jit              # numba JIT + spotpy
+python run_sceua.py  [reps]             # best-fit (SCE-UA)
+python run_spotpy.py [reps] [iid|ar1]   # posterior / UQ (DREAM)
+```
+
+- `run_sceua.py` builds the model once with `mnished.ScoringModel` and reuses it
+  every evaluation (no per-eval CSV re-read or reconstruction), reaching the same
+  optimum as Dakota EGO + pattern-search in a small fraction of the wall-clock.
+- `run_spotpy.py` runs DREAM with a formal log-flow likelihood (`iid`, or `ar1`
+  to account for the strong day-to-day autocorrelation of streamflow residuals);
+  the saved chain is the posterior.
+- **Serial is fastest here** — each evaluation returns a long simulation vector,
+  so multiprocessing loses more to inter-process pickling than it saves.
+
+Requires the `mnished-jit` environment (`pip install mnished[jit] spotpy`; the
+Numba JIT needs `numpy < 2.3`). See issue #20.
+
 ## Files
 
 | File | Description |
@@ -105,6 +131,8 @@ active (the pure-Python fallback is ~100× slower).
 | `driver_bayes.py` | Dakota DREAM driver (returns modelled log-flows) |
 | `run_driver_bayes.sh` | Shell wrapper Dakota calls per Bayesian evaluation |
 | `dakota_bayes.in` | Bayesian Dakota input (generated; do not edit by hand) |
+| `run_sceua.py` | In-process SCE-UA optimiser (SPOTPY; builds once via `ScoringModel`) |
+| `run_spotpy.py` | In-process DREAM sampler (SPOTPY; iid / AR(1) log-flow likelihood) |
 
 ## Forward run
 
