@@ -299,8 +299,8 @@ class Profile:
         if not np.any(np.isfinite(self.score)):
             return False
         best = int(np.nanargmax(self.score))
-        return ((best == 0 or best == len(self.score) - 1)
-                and self.score[best] > self.score_opt + delta)
+        return bool((best == 0 or best == len(self.score) - 1)
+                    and self.score[best] > self.score_opt + delta)
 
     def __repr__(self):
         return (f"Profile({self.name!r}, n={len(self.x)}, "
@@ -469,21 +469,34 @@ class Spectrum:
     """
 
     def __init__(self, names, M, step):
-        self.names = list(names)
-        self.M = np.asarray(M, dtype=float)
+        full_names = list(names)
+        self.M = np.asarray(M, dtype=float)     # full matrix, retained
         self.step = step
-        # symmetrise (finite-difference noise breaks exact symmetry)
-        Msym = 0.5 * (self.M + self.M.T)
-        finite = np.all(np.isfinite(Msym))
-        if finite:
-            w, V = np.linalg.eigh(Msym)
-            order = np.argsort(w)[::-1]      # descending: stiff first
+        # A parameter pegged at a bound has no room for a finite-difference
+        # step, so its whole row/column is nan.  Drop those parameters
+        # (they carry no local curvature information) and decompose the
+        # remaining submatrix, rather than letting one pegged parameter —
+        # e.g. a matrix-τ against its upper bound — void the entire
+        # spectrum.  Excluded names are reported separately.
+        diag = np.diag(self.M)
+        keep = np.where(np.isfinite(diag))[0]
+        self.names = [full_names[i] for i in keep]
+        self.excluded = [full_names[i] for i in range(len(full_names))
+                         if i not in keep]
+        sub = self.M[np.ix_(keep, keep)] if keep.size else np.empty((0, 0))
+        # residual nans (e.g. a model failure at one corner) → 0: treat that
+        # off-diagonal coupling as unresolved rather than discarding the row.
+        if sub.size and not np.all(np.isfinite(sub)):
+            sub = np.where(np.isfinite(sub), sub, 0.0)
+        sub = 0.5 * (sub + sub.T)               # symmetrise FD noise
+        if sub.size:
+            w, V = np.linalg.eigh(sub)
+            order = np.argsort(w)[::-1]          # descending: stiff first
             self.eigvals = w[order]
             self.eigvecs = V[:, order]
         else:
-            n = len(names)
-            self.eigvals = np.full(n, np.nan)
-            self.eigvecs = np.full((n, n), np.nan)
+            self.eigvals = np.array([])
+            self.eigvecs = np.empty((0, 0))
 
     @property
     def condition_number(self):
@@ -536,6 +549,9 @@ class Spectrum:
         lines.append(f"condition number (stiff/sloppy): "
                      f"{cn:.3g}" if np.isfinite(cn) else
                      "condition number: nan")
+        if self.excluded:
+            lines.append("excluded (pegged at bound, no curvature): "
+                         + ", ".join(self.excluded))
         lines.append(f"{'#':>2} {'stiffness':>12}  direction (top loadings)")
         for k in range(len(self.eigvals)):
             w = self.eigvals[k]
