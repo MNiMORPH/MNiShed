@@ -1,89 +1,31 @@
 #!/usr/bin/env python3
-"""Generic in-process calibration — any basin, from params.yml alone.
+"""Generic in-process calibration — driven by params.yml, no per-basin Python.
 
-The model run is declared in config, not in code: each parameter's `target`
-field (see params.yml) says where it maps in run_and_score, so this one runner
-calibrates any basin with no per-basin Python. It builds the model once with
-mnished.ScoringModel and reuses it for every evaluation.
+A thin SPOTPY adapter over ``mnished.Calibrator`` (the standard config-driven
+model setup): Calibrator reads each parameter's ``target`` from params.yml,
+builds the model once (ScoringModel), and scores a parameter set; this script
+wires it to SPOTPY's SCE-UA (best-fit) or DREAM (UQ).
 
-    conda activate mnished-jit          # numba JIT + spotpy
-    python calibrate.py sceua [reps]            # best-fit (SCE-UA)
-    python calibrate.py dream [reps] [iid|ar1]  # posterior / UQ (DREAM)
+    conda activate mnished-jit                 # numba JIT + spotpy
+    python calibrate.py sceua [reps]           # best-fit (SCE-UA)
+    python calibrate.py dream [reps] [iid|ar1] # posterior / UQ (DREAM)
 
-Targets may be flat single-cascade (``name`` / ``name[i]``) or nested
-sub-catchment / lake (``sub_catchments[I].key[j]``, with ``I`` a shared-index
-list such as ``0,1`` for a parameter common to several zones — e.g. Crow Wing's
-two land zones). See MNiMORPH/MNiShed#20.
+Targets may be flat (``name`` / ``name[i]``) or nested sub-catchment / lake
+(``sub_catchments[I].key[j]``, with I a shared-index list like ``0,1``). See
+``mnished.Calibrator`` and MNiMORPH/MNiShed#20.
 """
 
-import re
 import sys
 import time
 
 import numpy as np
-import yaml
 import spotpy
 
-from mnished import ParameterSet, ScoringModel, log_flow_residual_terms
+from mnished import Calibrator, log_flow_residual_terms
 
-with open('params.yml') as f:
-    _CFG = yaml.safe_load(f)
-P, DRV, MOD = _CFG['parameters'], _CFG['driver'], _CFG.get('modules', {})
-PSET = ParameterSet.from_params_yml(P)
-NAMES = PSET.names
-START, END = DRV.get('decade_start'), DRV.get('decade_end')
-with open(DRV['config_template']) as f:
-    N_SUB = len(yaml.safe_load(f).get('sub_catchments', [])) or 1
-
-
-def build_kwargs(params, theta, n_sub=1):
-    """Assemble run_and_score keywords from each parameter's `target`.
-
-    Flat targets:
-      ``name``      -> a scalar keyword
-      ``name[i]``   -> a list keyword at position i (grouped across parameters)
-    Nested (sub-catchment) targets:
-      ``sub_catchments[I].key``     -> a scalar override on sub-catchment(s) I
-      ``sub_catchments[I].key[j]``  -> a list override, position j
-    where I is an index or comma-list (e.g. ``0,1`` for a parameter shared
-    across zones). A ``log__`` prefix applies 10** to the value. Untargeted list
-    positions are left ``None`` (run_and_score keeps the config value), so a
-    parameter need only name the elements it actually calibrates.
-    """
-    flat_lists, kw = {}, {}
-    sub_lists, sub_scalar = {}, {}
-    for name, spec in params.items():
-        target = spec.get('target')
-        if not target:
-            continue
-        val = theta.get(name, spec['fixed'])
-        if name.startswith('log__'):
-            val = 10.0 ** val
-        nested = re.fullmatch(r'sub_catchments\[([\d,]+)\]\.(.+)', target)
-        if nested:
-            rest = re.fullmatch(r'(\w+)\[(\d+)\]', nested.group(2))
-            for i in (int(x) for x in nested.group(1).split(',')):
-                if rest:
-                    sub_lists.setdefault(
-                        (i, rest.group(1)), {})[int(rest.group(2))] = val
-                else:
-                    sub_scalar[(i, nested.group(2))] = val
-            continue
-        flat = re.fullmatch(r'(\w+)\[(\d+)\]', target)
-        if flat:
-            flat_lists.setdefault(flat.group(1), {})[int(flat.group(2))] = val
-        else:
-            kw[target] = val
-    for key, idx in flat_lists.items():
-        kw[key] = [idx.get(i) for i in range(max(idx) + 1)]
-    if sub_lists or sub_scalar:
-        sub = [{} for _ in range(n_sub)]
-        for (i, key), idx in sub_lists.items():
-            sub[i][key] = [idx.get(j) for j in range(max(idx) + 1)]
-        for (i, key), v in sub_scalar.items():
-            sub[i][key] = v
-        kw['sub_catchments'] = sub
-    return kw
+CAL = Calibrator.from_yaml('params.yml')
+NAMES = CAL.names
+START, END = CAL.driver.get('decade_start'), CAL.driver.get('decade_end')
 
 
 def _ar1_loglike(r, phi):
@@ -97,30 +39,22 @@ def _ar1_loglike(r, phi):
         0.5 * np.log(one_m) - 0.5 * n * np.log(sse)
 
 
-class Calibration:
-    """SPOTPY setup driven entirely by params.yml targets."""
+class Setup:
+    """SPOTPY setup: model = Calibrator.score; objective = KGE or a likelihood."""
 
     def __init__(self, likelihood=None):
         self.likelihood = likelihood          # None=optimise KGE; 'iid'/'ar1'=DREAM
         self.evals = 0
-        self.model = ScoringModel(
-            DRV['config_template'],
-            enforce_water_balance=DRV.get('enforce_water_balance', 'water-year'))
         self.params = [spotpy.parameter.Uniform(p.name, p.lower, p.upper,
-                                                optguess=p.value) for p in PSET]
+                                                optguess=p.value)
+                       for p in CAL.parameter_set]
         if likelihood == 'ar1':
             self.params.append(spotpy.parameter.Uniform('likelihood_phi1',
                                                         0.0, 0.99, optguess=0.9))
         if likelihood:                        # observed log-flows (fixed): compute once
-            ref = self._run({n: P[n]['initial'] for n in NAMES})
+            ref = CAL.score({p.name: p.value for p in CAL.parameter_set})
             self.log_obs = log_flow_residual_terms(
                 ref, start=START, end=END)['log_obs'].to_numpy()
-
-    def _run(self, theta):
-        return self.model.score(modules=MOD, routing_N=DRV['routing_N'],
-                                spin_up_cycles=DRV['spin_up_cycles'],
-                                metric=DRV['metric'], start=START, end=END,
-                                **build_kwargs(P, theta, N_SUB))
 
     def parameters(self):
         return spotpy.parameter.generate(self.params)
@@ -130,9 +64,8 @@ class Calibration:
         if self.likelihood == 'ar1':
             self._phi = float(vector[len(NAMES)])
             vector = vector[:len(NAMES)]
-        theta = dict(zip(NAMES, vector))
         try:
-            res = self._run(theta)
+            res = CAL.score(dict(zip(NAMES, vector)))
         except Exception:
             return list(self.log_obs - 10.0) if self.likelihood else [-10.0]
         if self.likelihood:
@@ -158,18 +91,18 @@ def main():
     reps = int(sys.argv[2]) if len(sys.argv) > 2 else 4000
     t0 = time.time()
     if mode == 'sceua':
-        setup = Calibration()
+        setup = Setup()
         sampler = spotpy.algorithms.sceua(setup, dbname='calib_sceua',
                                           dbformat='ram')
         sampler.sample(reps)
         dt = time.time() - t0
         print(f"\nsceua: {setup.evals} evals, wall={dt:.1f}s "
               f"({dt / max(setup.evals, 1) * 1000:.0f} ms/eval)")
-        print(f"best {DRV['metric']} = "
+        print(f"best {CAL.driver['metric']} = "
               f"{1.0 - sampler.status.objectivefunction_min:.4f}")
     elif mode == 'dream':
         like = sys.argv[3] if len(sys.argv) > 3 else 'iid'
-        setup = Calibration(likelihood=like)
+        setup = Setup(likelihood=like)
         sampler = spotpy.algorithms.dream(setup, dbname=f'calib_dream_{like}',
                                           dbformat='csv', parallel='seq')
         sampler.sample(reps, nChains=8)
