@@ -2004,13 +2004,22 @@ class Buckets(object):
 
         The result is stored as 'ET for model [mm/day]' in self.hydrodata.
         """
-        if self.et_method == 'datafile':
+        # The raw ET base (datafile column, or Thornthwaite from fixed
+        # temperatures) is independent of et_scale and the calibrated
+        # parameters, so cache it. compute_ET is re-run on every parameter
+        # evaluation, but the (expensive) Thornthwaite computation then happens
+        # only once per loaded forcing. The cache rides along on a deep copy of
+        # the Buckets, so a reused ScoringModel never recomputes it.
+        if getattr(self, '_raw_ET_cache', None) is not None:
+            _raw_ET = self._raw_ET_cache
+        elif self.et_method == 'datafile':
             _raw_ET = self.hydrodata['Evapotranspiration [mm/day]']
         elif self.et_method == 'ThornthwaiteChang2019':
             _raw_ET = self.evapotranspiration_Chang2019()
         else:
             raise ValueError('evapotranspiration_method must be "datafile" or '+
                              '"ThornthwaiteChang2019".')
+        self._raw_ET_cache = _raw_ET
 
         if self.use_et_water_stress or (self.use_et_reservoir_draw and
                                          self.enforce_water_balance == 'none'):
