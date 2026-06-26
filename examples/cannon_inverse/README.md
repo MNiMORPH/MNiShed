@@ -95,10 +95,18 @@ dominates. **In-process SPOTPY** calls the model directly with the Numba JIT
 warm — ~100× faster per evaluation — and offers both an optimiser (SCE-UA) and a
 Bayesian sampler (DREAM) on the same setup.
 
+`calibrate.py` is the generic, **config-driven** runner — it works for any basin
+with no per-basin Python, because each parameter's `target` in `params.yml`
+declares where it maps in the model (see the `parameters:` comment there).
+`run_sceua.py` / `run_spotpy.py` are the explicit, hand-mapped equivalents.
+
 ```bash
-conda activate mnished-jit              # numba JIT + spotpy
-python run_sceua.py  [reps]             # best-fit (SCE-UA)
-python run_spotpy.py [reps] [iid|ar1]   # posterior / UQ (DREAM)
+conda activate mnished-jit                 # numba JIT + spotpy
+python calibrate.py sceua [reps]           # best-fit (SCE-UA), config-driven
+python calibrate.py dream [reps] [iid|ar1] # posterior / UQ (DREAM), config-driven
+# explicit per-basin equivalents:
+python run_sceua.py  [reps]
+python run_spotpy.py [reps] [iid|ar1]
 ```
 
 - `run_sceua.py` builds the model once with `mnished.ScoringModel` and reuses it
@@ -131,6 +139,7 @@ Numba JIT needs `numpy < 2.3`). See issue #20.
 | `driver_bayes.py` | Dakota DREAM driver (returns modelled log-flows) |
 | `run_driver_bayes.sh` | Shell wrapper Dakota calls per Bayesian evaluation |
 | `dakota_bayes.in` | Bayesian Dakota input (generated; do not edit by hand) |
+| `calibrate.py` | Generic config-driven in-process runner (SCE-UA / DREAM; reads `target:` mappings) |
 | `run_sceua.py` | In-process SCE-UA optimiser (SPOTPY; builds once via `ScoringModel`) |
 | `run_spotpy.py` | In-process DREAM sampler (SPOTPY; iid / AR(1) log-flow likelihood) |
 
