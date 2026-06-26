@@ -1,6 +1,15 @@
 from ._version import __version__
 from .calibration import CalibResult, run_and_score
 from .hydrograph_separation import HydrographSeparation
+from .identifiability import (
+    IdentifiabilityReport,
+    Parameter,
+    ParameterSet,
+    eigenspectrum,
+    profile,
+    profile_all,
+    ridge,
+)
 from .mnished import Buckets, Reservoir, Snowpack, SubCatchment
 from .priors import Priors, suggest_priors
 from .recession import BrutsaertNieber
@@ -16,6 +25,13 @@ __all__ = [
     "BrutsaertNieber",
     "suggest_priors",
     "Priors",
+    "Parameter",
+    "ParameterSet",
+    "profile",
+    "profile_all",
+    "eigenspectrum",
+    "ridge",
+    "IdentifiabilityReport",
     "__version__",
 ]
 
