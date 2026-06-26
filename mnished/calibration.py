@@ -1416,8 +1416,12 @@ class Calibrator:
         The ``parameters`` block (each entry with bounds and a ``target``).
     driver : dict
         Run settings: ``config_template`` (the model YAML), ``metric``,
-        ``spin_up_cycles``, ``routing_N``, optional ``decade_start`` /
-        ``decade_end`` and ``enforce_water_balance``.
+        ``spin_up_cycles``, ``routing_N``, ``enforce_water_balance``, and the
+        calibration window(s). Windows are given as ``decades:`` — a list of
+        ``{start, end}`` dicts (multi-window objective; ``None`` = full record).
+        ``decade_start`` / ``decade_end`` are a shorthand for a single such
+        window. (The name ``decades:`` will become ``windows:`` in v4.0; see
+        MNiMORPH/MNiShed#24.)
     modules : dict, optional
         Process-module toggles, applied per evaluation.
 
@@ -1441,9 +1445,10 @@ class Calibrator:
                                              'water-year'))
         with open(driver['config_template']) as f:
             self.n_sub = len(yaml.safe_load(f).get('sub_catchments', [])) or 1
-        # Calibration windows. An explicit ``decades:`` list (each a
-        # ``{start, end}``) makes the objective multi-window; absent, a single
-        # ``decade_start`` / ``decade_end`` window (``None`` = full record).
+        # Calibration windows: the one window mechanism. ``decades:`` is a list
+        # of ``{start, end}`` dicts; ``decade_start`` / ``decade_end`` is the
+        # shorthand for a single window (``None`` = full record). Both land in
+        # ``self.windows``, which score() / score_windows() read uniformly.
         self.windows = driver.get('decades') or [
             {'start': driver.get('decade_start'),
              'end':   driver.get('decade_end')}]
@@ -1470,12 +1475,16 @@ class Calibrator:
         if not isinstance(theta, dict):
             theta = dict(zip(self.names, theta))
         d = self.driver
+        # Default to the first (or only) calibration window, so a single-element
+        # ``decades:`` list and the ``decade_start`` / ``decade_end`` shorthand
+        # score the same span through one mechanism (:attr:`windows`).
+        w0 = self.windows[0]
         return self.model.score(
             modules=self.modules, routing_N=d['routing_N'],
             spin_up_cycles=d['spin_up_cycles'],
             metric=metric if metric is not None else d['metric'],
-            start=start if start is not None else d.get('decade_start'),
-            end=end if end is not None else d.get('decade_end'),
+            start=start if start is not None else w0.get('start'),
+            end=end if end is not None else w0.get('end'),
             **self.run_kwargs(theta))
 
     def score_windows(self, theta, windows=None, metric=None):
