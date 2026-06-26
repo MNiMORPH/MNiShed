@@ -110,3 +110,14 @@ venv.bak/
 # Benchmark run outputs (machine-specific; regenerate with benchmarks/bench_jit.py).
 # The committed figure lives in docs/source/_static/.
 benchmarks/results/
+
+# In-process calibration outputs (SPOTPY DREAM/SCE-UA chains and scratch run
+# workspaces; large and regenerable via run_spotpy.py / run_sceua.py).
+cannon_dream*.csv
+cannon_sceua*.csv
+examples/cannon_inverse/decade_run/
+# Dakota run ephemera
+examples/**/out_bayes*/
+examples/**/dakota.dat
+examples/**/dakota.out
+examples/**/dakota.rst
