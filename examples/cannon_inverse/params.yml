@@ -19,12 +19,18 @@ dakota:
   evaluation_concurrency:    4
 
 driver:
+  config_template: cannon_cfg_template.yml   # model config (used by the generic in-process runner)
   metric:         'KGE_logKGE_logFDC'  # KGE (peaks) + logKGE (low-flow timing) + KGE_logFDC (flow regime)
   spin_up_cycles: 3
   routing_N:      2        # Nash-cascade shape parameter (fixed)
   decade_start:   null     # null = full record; e.g. '1990-01-01' for a decade
   decade_end:     null
 
+# Each parameter's `target` declares where it maps in run_and_score, so the
+# generic in-process runner (calibrate.py) needs no per-basin Python:
+#   name[i] -> a list keyword at position i (grouped across parameters)
+#   bare name -> a scalar keyword
+#   a `log__` prefix applies 10** to the value automatically.
 parameters:
 
   log__t_recession_shallow:
@@ -34,6 +40,7 @@ parameters:
     initial: 1.2
     fixed:   1.2
     active:  true
+    target:  recession_coeff[0]
 
   log__t_recession_soil:
     description: "log10 soil-zone e-folding time [days]"
@@ -42,6 +49,7 @@ parameters:
     initial: 1.8
     fixed:   1.8
     active:  true
+    target:  recession_coeff[1]
 
   log__t_recession_karst:
     description: "log10 karst/bedrock e-folding time [days]"
@@ -50,6 +58,7 @@ parameters:
     initial: 3.5
     fixed:   3.5
     active:  true
+    target:  recession_coeff[2]
 
   f_exfiltration_shallow:
     description: "fraction of shallow exfiltration to stream (remainder recharges soil)"
@@ -58,6 +67,7 @@ parameters:
     initial: 0.80
     fixed:   0.80
     active:  true
+    target:  f_to_discharge[0]
 
   f_exfiltration_soil:
     description: "fraction of soil-zone exfiltration to stream (remainder recharges karst)"
@@ -66,6 +76,7 @@ parameters:
     initial: 0.10
     fixed:   0.10
     active:  true
+    target:  f_to_discharge[1]
 
   PDD_melt_factor:
     description: "degree-day snowmelt rate [mm SWE / degC / day]"
@@ -74,6 +85,7 @@ parameters:
     initial: 1.0
     fixed:   1.0
     active:  true
+    target:  melt_factor
 
   log__Hmax_shallow:
     description: "log10 shallow-reservoir max effective depth [mm]; saturation-excess OLF when exceeded"
@@ -82,6 +94,7 @@ parameters:
     initial: 2.3
     fixed:   2.3
     active:  true
+    target:  Hmax[0]
 
   log__fdd_threshold:
     description: "log10 frozen-ground-index threshold [degC·day]; blocks shallow-to-soil infiltration"
@@ -90,6 +103,7 @@ parameters:
     initial: 1.0
     fixed:   1.0
     active:  true
+    target:  fdd_threshold
 
   snow_insulation_k:
     description: "snow insulation decay constant [mm⁻¹ SWE]; T_eff = T·exp(-k·SWE); 0 = off"
@@ -98,6 +112,7 @@ parameters:
     initial: 0.057
     fixed:   0.0   # 0 = insulation disabled
     active:  false
+    # no target: inactive and the module is off, so it is not passed
 
   f_direct_runoff:
     description: "fast-bypass fraction of daily recharge; Hortonian-inspired but not rigorous at daily scale"
@@ -106,6 +121,7 @@ parameters:
     initial: 0.05
     fixed:   0.0   # 0 = bypass disabled
     active:  false
+    # no target: inactive and the module is off, so it is not passed
 
   log__routing_K:
     description: "log10 Nash-cascade storage time constant [days] (N=2; mean travel time = N*K)"
@@ -114,3 +130,4 @@ parameters:
     initial:  0.0
     fixed:    0.0
     active:  true
+    target:  routing_K
