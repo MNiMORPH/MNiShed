@@ -25,7 +25,7 @@ from mnished import Calibrator, log_flow_residual_terms
 
 CAL = Calibrator.from_yaml('params.yml')
 NAMES = CAL.names
-START, END = CAL.driver.get('decade_start'), CAL.driver.get('decade_end')
+WINDOWS = CAL.windows                   # one window, or several (driver `decades:`)
 
 
 def _ar1_loglike(r, phi):
@@ -51,10 +51,12 @@ class Setup:
         if likelihood == 'ar1':
             self.params.append(spotpy.parameter.Uniform('likelihood_phi1',
                                                         0.0, 0.99, optguess=0.9))
-        if likelihood:                        # observed log-flows (fixed): compute once
-            ref = CAL.score({p.name: p.value for p in CAL.parameter_set})
-            self.log_obs = log_flow_residual_terms(
-                ref, start=START, end=END)['log_obs'].to_numpy()
+        if likelihood:                        # observed log-flows (fixed): compute once,
+            refs = CAL.score_windows(             # concatenated across windows
+                {p.name: p.value for p in CAL.parameter_set})
+            self.log_obs = np.concatenate([
+                log_flow_residual_terms(r, start=w['start'], end=w['end'])['log_obs'].to_numpy()
+                for r, w in zip(refs, WINDOWS)])
 
     def parameters(self):
         return spotpy.parameter.generate(self.params)
@@ -65,13 +67,15 @@ class Setup:
             self._phi = float(vector[len(NAMES)])
             vector = vector[:len(NAMES)]
         try:
-            res = CAL.score(dict(zip(NAMES, vector)))
+            results = CAL.score_windows(dict(zip(NAMES, vector)))
         except Exception:
             return list(self.log_obs - 10.0) if self.likelihood else [-10.0]
-        if self.likelihood:
-            return list(log_flow_residual_terms(
-                res, start=START, end=END)['log_mod'].to_numpy())
-        return [res.score if np.isfinite(res.score) else -10.0]
+        if self.likelihood:                   # residuals concatenated across windows
+            return list(np.concatenate([
+                log_flow_residual_terms(r, start=w['start'], end=w['end'])['log_mod'].to_numpy()
+                for r, w in zip(results, WINDOWS)]))
+        scores = [r.score if np.isfinite(r.score) else -10.0 for r in results]
+        return [float(np.mean(scores))]       # mean KGE over windows
 
     def evaluation(self):
         return list(self.log_obs) if self.likelihood else [1.0]
