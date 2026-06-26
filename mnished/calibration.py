@@ -1441,6 +1441,12 @@ class Calibrator:
                                              'water-year'))
         with open(driver['config_template']) as f:
             self.n_sub = len(yaml.safe_load(f).get('sub_catchments', [])) or 1
+        # Calibration windows. An explicit ``decades:`` list (each a
+        # ``{start, end}``) makes the objective multi-window; absent, a single
+        # ``decade_start`` / ``decade_end`` window (``None`` = full record).
+        self.windows = driver.get('decades') or [
+            {'start': driver.get('decade_start'),
+             'end':   driver.get('decade_end')}]
 
     @classmethod
     def from_yaml(cls, path):
@@ -1471,3 +1477,16 @@ class Calibrator:
             start=start if start is not None else d.get('decade_start'),
             end=end if end is not None else d.get('decade_end'),
             **self.run_kwargs(theta))
+
+    def score_windows(self, theta, windows=None, metric=None):
+        """Score ``theta`` on each calibration window; a list of CalibResult.
+
+        ``windows`` is a list of ``{'start', 'end'}`` dicts and defaults to
+        :attr:`windows` (the driver's ``decades:`` list, or the single
+        ``decade_start`` / ``decade_end`` window). Aggregating the per-window
+        results — a mean score for optimisation, concatenated residuals for a
+        likelihood — is the caller's choice, so this stays sampler-agnostic.
+        """
+        return [self.score(theta, start=w.get('start'), end=w.get('end'),
+                            metric=metric)
+                for w in (windows if windows is not None else self.windows)]
