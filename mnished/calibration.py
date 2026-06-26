@@ -815,7 +815,11 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         ``'multipath_timescale'``, ``'leakance_R'``, ``'H_threshold'``,
         ``'recession_exponents'``, ``'f_tile'``, ``'tau_tile'``, ``'pdm_H0'``),
         scoped to that sub-catchment's cascade with the same semantics as the
-        flat arguments. Mutually exclusive with the flat per-reservoir
+        flat arguments. A lake sub-catchment's dict may also contain
+        ``'f_route_lake'`` (the channelized-routing fraction in ``[0, 1]``;
+        requires the lake's ``gw_partner``), letting it be calibrated directly
+        without rewriting the config; the land zone's routed-away fraction is
+        kept consistent automatically. Mutually exclusive with the flat per-reservoir
         arguments. When ``'area_fraction'`` is given it must still sum to 1
         across sub-catchments. For AIC, every overridden value counts as one
         free parameter, plus n_sub_catchments - 1 when area fractions are set.
@@ -922,11 +926,33 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                 f"'sub_catchments' has {len(sub_catchments)} entries but the "
                 f"config defines {b.n_sub_catchments} sub-catchments.")
         _set_area = False
+        _routed_overridden = False
         for _sc_obj, _sc_over in zip(b.sub_catchments, sub_catchments):
             if 'area_fraction' in _sc_over:
                 _sc_obj.area_fraction = _sc_over['area_fraction']
                 _set_area = True
+            if 'f_route_lake' in _sc_over:
+                if _sc_obj.kind != 'lake':
+                    raise ValueError(
+                        f"Sub-catchment '{_sc_obj.name}': 'f_route_lake' "
+                        "override only applies to a lake sub-catchment.")
+                _fr = float(_sc_over['f_route_lake'])
+                if not 0.0 <= _fr <= 1.0:
+                    raise ValueError(
+                        f"Lake '{_sc_obj.name}': f_route_lake override must be "
+                        f"in [0, 1]; got {_fr}.")
+                if _fr > 0.0 and _sc_obj.gw_partner is None:
+                    raise ValueError(
+                        f"Lake '{_sc_obj.name}': f_route_lake > 0 needs a "
+                        "routing source (the lake's 'gw_partner').")
+                _sc_obj.f_route_lake = _fr
+                _routed_overridden = True
+                k += 1
             k += _apply_reservoir_overrides(_sc_obj.reservoirs, _sc_over)
+        if _routed_overridden:
+            # Keep each land zone's routed-away fraction in step with the
+            # overridden f_route_lake (the parser does this at config time).
+            b._resolve_routed_away_fractions()
         if _set_area:
             _asum = sum(s.area_fraction for s in b.sub_catchments)
             if abs(_asum - 1.0) > 1e-6:
