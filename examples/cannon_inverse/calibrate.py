@@ -51,12 +51,14 @@ class Setup:
         if likelihood == 'ar1':
             self.params.append(spotpy.parameter.Uniform('likelihood_phi1',
                                                         0.0, 0.99, optguess=0.9))
-        if likelihood:                        # observed log-flows (fixed): compute once,
-            refs = CAL.score_windows(             # concatenated across windows
+        if likelihood:                        # observed log-flows (fixed): compute once
+            refs = CAL.score_windows(
                 {p.name: p.value for p in CAL.parameter_set})
-            self.log_obs = np.concatenate([
-                log_flow_residual_terms(r, start=w['start'], end=w['end'])['log_obs'].to_numpy()
-                for r, w in zip(refs, WINDOWS)])
+            parts = [log_flow_residual_terms(r, start=w['start'],
+                                             end=w['end'])['log_obs'].to_numpy()
+                     for r, w in zip(refs, WINDOWS)]
+            self.log_obs = np.concatenate(parts)
+            self._window_lens = [len(p) for p in parts]   # for per-window AR(1)
 
     def parameters(self):
         return spotpy.parameter.generate(self.params)
@@ -82,8 +84,16 @@ class Setup:
 
     def objectivefunction(self, simulation, evaluation):
         if self.likelihood == 'ar1':
-            return _ar1_loglike(np.asarray(simulation) - np.asarray(evaluation),
-                                self._phi)
+            # Whiten each window's residuals on their own and sum the
+            # log-likelihoods: windows are disjoint in time, so the AR(1) lag
+            # must not cross a boundary (that would invent a correlation
+            # between residuals decades apart).
+            r = np.asarray(simulation) - np.asarray(evaluation)
+            ll, i = 0.0, 0
+            for n in self._window_lens:
+                ll += _ar1_loglike(r[i:i + n], self._phi)
+                i += n
+            return ll
         if self.likelihood == 'iid':
             return spotpy.likelihoods.gaussianLikelihoodMeasErrorOut(
                 evaluation, simulation)
