@@ -479,3 +479,51 @@ def test_lake_calibrates_via_sub_catchment_overrides(tmp_path):
     assert lake_res.recession_coeff == pytest.approx(1.0 / 0.08)
     assert lake_res.H_threshold == 180.0
     assert lake_res.recession_exponent == pytest.approx(5.0 / 3.0)
+
+
+# ---------------------------------------------------------------------------
+# f_route_lake as a run_and_score override (calibratable without a cfg rewrite)
+# ---------------------------------------------------------------------------
+
+def _route_cfg(tmp_path, f_route, name='cfg.yml'):
+    cfg = _base_cfg()
+    cfg['general']['spin_up_cycles'] = 1
+    cfg['sub_catchments'] = [
+        _land(0.6, name='upland'),
+        _lake(0.4, name='lake', gw_partner='upland', f_route_lake=f_route)]
+    return _write(tmp_path, cfg, name=name)
+
+
+def test_f_route_lake_override_matches_config(tmp_path):
+    """f_route_lake via the sub_catchments override is bit-identical to setting
+    it in the config: the partner land zone's routed-away fraction is recomputed
+    so the discharge reduction stays in step with the routing inflow (and the
+    JIT, when active, reads the overridden values)."""
+    direct = mnished.run_and_score(_route_cfg(tmp_path, 0.7, 'a.yml'),
+                                   metric='KGE')
+    overridden = mnished.run_and_score(
+        _route_cfg(tmp_path, 0.0, 'b.yml'),
+        sub_catchments=[{}, {'f_route_lake': 0.7}], metric='KGE')
+    assert overridden.score == direct.score
+
+
+def test_f_route_lake_override_recomputes_routed_away(tmp_path):
+    res = mnished.run_and_score(
+        _route_cfg(tmp_path, 0.0), sub_catchments=[{}, {'f_route_lake': 0.5}],
+        metric='KGE')
+    assert res.buckets.sub_catchments[0]._routed_away_fraction == \
+        pytest.approx(0.5)
+
+
+def test_f_route_lake_override_out_of_range_raises(tmp_path):
+    with pytest.raises(ValueError, match="f_route_lake"):
+        mnished.run_and_score(_route_cfg(tmp_path, 0.0),
+                              sub_catchments=[{}, {'f_route_lake': 1.5}],
+                              metric='KGE')
+
+
+def test_f_route_lake_override_on_non_lake_raises(tmp_path):
+    with pytest.raises(ValueError, match="lake sub-catchment"):
+        mnished.run_and_score(_route_cfg(tmp_path, 0.0),
+                              sub_catchments=[{'f_route_lake': 0.5}, {}],
+                              metric='KGE')
