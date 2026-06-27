@@ -37,6 +37,29 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from terrain remains planned with the drainage-density / hydraulic-conductivity
   work (MNiMORPH/MNiShed#19).
 
+- Optional growing-degree-day vegetation-phenology coefficient (`Kc`) on the
+  `ThornthwaiteChang2019` ET demand, configured with a `phenology:` block (off by
+  default). `Kc` ramps from `dormant_Kc` to `full_Kc` as accumulated GDD (base
+  `base_temperature__C`, reset each calendar year) rise from `leafout_GDD` to
+  `full_canopy_GDD`, holds through summer, then declines over a day-of-year
+  senescence window. Because GDD enters nonlinearly it corrects seasonal *phasing*
+  rather than being absorbed by the annual `et_scale`, so it stops temperature-
+  index ET from evaporating the snowmelt freshet before leaf-out. Applied to the
+  demand so the water-balance correction preserves the annual total; supported on
+  the pure-Python and JIT loops (verified identical).
+
+### Fixed
+
+- Water-year ET scaling now normalises against the actual ET demand that is
+  applied (`Buckets._demand_ET()`), not the raw input `Evapotranspiration` column.
+  Previously `enforce_water_balance: 'water-year'` with
+  `evapotranspiration_method: ThornthwaiteChang2019` divided `P - Q` by the input
+  ET column while applying the multiplier to the Thornthwaite demand, so the
+  per-water-year balance did not close (off by `mean(Thornthwaite)/mean(column)`,
+  ~2× on test data). `datafile` mode and `'global'` closure are unaffected
+  (bit-identical); only Thornthwaite + water-year results change, now closing
+  correctly. Phenology is water-balance-aware under every closure mode.
+
 ## [3.1.0] - 2026-06-24
 
 ### Added
