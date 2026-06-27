@@ -37,6 +37,38 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   from terrain remains planned with the drainage-density / hydraulic-conductivity
   work (MNiMORPH/MNiShed#19).
 
+- In-process, config-driven calibration: `Calibrator` (with `target_kwargs`)
+  defines the calibration problem declaratively — each parameter's `target:` in a
+  `params.yml` maps it into the model (flat `name` / `name[i]`, or nested
+  `sub_catchments[I].key[j]` for multi-zone and lake setups), with no per-basin
+  Python. It is sampler-agnostic: point any optimizer or sampler at
+  `Calibrator.score`, which is bit-identical to the equivalent `run_and_score`
+  call.
+- `ScoringModel`: a build-once / score-many wrapper that constructs the model and
+  reads the forcing once, then reuses a fresh copy per evaluation. For thousands
+  of evaluations this removes the per-evaluation rebuild that otherwise dominates
+  the wall-clock; `Calibrator` uses it internally. Bit-identical to `run_and_score`.
+- Multi-window calibration objectives: `Calibrator.score_windows` scores a
+  parameter set on each of several calibration windows (a driver `decades:` list
+  of `{start, end}`), returning one `CalibResult` per window and leaving
+  aggregation — a mean score, or concatenated residuals for a likelihood — to the
+  caller (the decadal-backbone objective). Single-window configs are unchanged.
+- `log_flow_residual_terms`: exposes the scored log-flow residual terms (observed
+  and modeled log-discharge over the scoring mask) used by a formal Gaussian
+  likelihood, so an external Bayesian sampler can build its own objective on
+  MNiShed's scored flows.
+- Parameter-identifiability diagnostics (`mnished.identifiability`): post-fit tools
+  that characterise how well the data constrain each parameter — per-parameter
+  `profile` / `profile_all` likelihood profiles, a curvature `eigenspectrum` that
+  names stiff vs. degenerate (sloppy) parameter combinations, 2-D `ridge` maps, and
+  an `IdentifiabilityReport`, with plotting. Bound-pegged parameters are excluded
+  from the curvature spectrum so a single pegged parameter no longer voids it.
+- The Cannon example gains in-process SPOTPY calibration runners — SCE-UA
+  (best-fit) and DREAM (posterior / UQ, with iid and AR(1) log-flow likelihoods)
+  driven by `Calibrator` — plus a Dakota DREAM Bayesian path. The in-process,
+  JIT-warm evaluation is roughly 100× faster per evaluation than the Dakota fork
+  interface, which remains available for expensive or cluster runs.
+
 - Optional growing-degree-day vegetation-phenology coefficient (`Kc`) on the
   `ThornthwaiteChang2019` ET demand, configured with a `phenology:` block (off by
   default). `Kc` ramps from `dormant_Kc` to `full_Kc` as accumulated GDD (base
