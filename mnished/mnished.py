@@ -75,7 +75,7 @@ def _notify_jit_unavailable(reason):
 
 if _numba_available:
     @_numba.jit(nopython=True, cache=True)
-    def _jit_run(P_arr, ET_arr, T_arr, T_min_arr, T_max_arr,
+    def _jit_run(P_arr, ET_arr, ET_open_arr, T_arr, T_min_arr, T_max_arr,
                  sc_start_idx, sc_end_idx, sc_area_fractions,
                  H_init, H_snow_init, fgi_init, H_deficit_carry_init,
                  tau_arr, b_arr, H_ref_arr, f_dis_in, junction_arr,
@@ -470,10 +470,11 @@ if _numba_available:
                     H_sub_total += area * (H_res[r] + H_tile[r])
 
             # ── Pass 2: lake elements ─────────────────────────────────────
-            # Direct P - E recharge (open-water E = ET column, no soil water
-            # stress, no snowpack/FGI/cascade) plus channelized inflow routed
-            # from the partner land zone's current-step discharge, then the
-            # threshold power-law outlet. Mirrors _advance_lake().
+            # Direct P - E recharge (open-water E = the phenology-free ET column,
+            # no soil water stress, no snowpack/FGI/cascade) plus channelized
+            # inflow routed from the partner land zone's current-step discharge,
+            # then the threshold power-law outlet. Mirrors _advance_lake().
+            ET_open_t = ET_open_arr[step]
             for sc in range(n_sub):
                 if is_lake[sc] != 1:
                     continue
@@ -485,7 +486,7 @@ if _numba_available:
                     routed_in = (f_route_lake_arr[sc]
                                  * sc_area_fractions[psc] / area
                                  * qi_land[psc])
-                new_H = H_res[li] + (P_t - ET_t + routed_in)
+                new_H = H_res[li] + (P_t - ET_open_t + routed_in)
                 H_res[li] = new_H if new_H > 0.0 else 0.0
                 H_eff_l = H_res[li] - H_threshold_arr[li]
                 if H_eff_l < 0.0:
@@ -2164,6 +2165,18 @@ class Buckets(object):
         # land-cover or climate sensitivity — at the cost of exact WB closure.
         self.hydrodata['ET for model [mm/day]'] = _et_mode * self.et_scale
 
+        # Open-water evaporation for lake elements: the same demand WITHOUT the
+        # vegetation phenology coefficient (open water has no leaf phenology), so
+        # `ET for model` / Kc — keeping the water-balance multiplier and et_scale.
+        # Only stored when phenology is on; otherwise lakes read `ET for model`
+        # directly (Kc = 1, identical). (Lake ice, the real seasonal control on
+        # open-water E, is not modeled.)
+        if self.use_phenology:
+            _Kc = self.phenology_Kc()
+            self.hydrodata['ET for model (open water) [mm/day]'] = (
+                self.hydrodata['ET for model [mm/day]'].to_numpy()
+                / np.where(_Kc > 0, _Kc, 1.0))
+
     def _et_stress_factor(self, sub_catchment):
         """
         Water-availability multiplier applied to potential ET each time step.
@@ -2515,10 +2528,13 @@ class Buckets(object):
         """
         res = lake_sc.reservoirs[0]
         P = self.hydrodata['Precipitation [mm/day]'][time_step]
-        # Open-water evaporation uses the model ET column directly (already
-        # scaled by et_scale and the water-balance multiplier); no soil-moisture
-        # water-stress factor, because open water is not moisture-limited.
-        E = self.hydrodata['ET for model [mm/day]'][time_step]
+        # Open-water evaporation: the model ET (scaled by et_scale and the
+        # water-balance multiplier) but WITHOUT the vegetation phenology Kc —
+        # open water has no leaf phenology. No soil-moisture water-stress factor
+        # either, because open water is not moisture-limited.
+        _et_col = ('ET for model (open water) [mm/day]' if self.use_phenology
+                   else 'ET for model [mm/day]')
+        E = self.hydrodata[_et_col][time_step]
         res.recharge(P - E + routed_inflow)
         res.discharge(self.dt)
         return res.H_discharge
@@ -2892,6 +2908,9 @@ class Buckets(object):
              _finalFgi, _finalDC) = _jit_run(
                 _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
                 _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
+                (_hd['ET for model (open water) [mm/day]'].to_numpy(dtype=np.float64)
+                 if self.use_phenology
+                 else _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64)),
                 _T, _Tmin, _Tmax,
                 _sc_start, _sc_end, _sc_area,
                 np.array([r.Hwater          for r in self.reservoirs], dtype=np.float64),
