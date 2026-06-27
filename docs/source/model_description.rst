@@ -917,6 +917,17 @@ Two methods are supported:
 In both cases, the annual scaling factor is stored and applied to ensure that
 :math:`P - Q - E = 0` over each water year.
 
+.. note::
+
+   Because Thornthwaite-Chang derives ET from temperature alone, it mis-times
+   the seasonal ET cycle wherever vegetation phenology is decoupled from
+   temperature — most notably in cold-region forests, where canopy leaf-out
+   lags spring warming, so early-spring ET is over-estimated and can consume the
+   snowmelt freshet. The annual water-balance scaling then redistributes that
+   bias into other seasons. See the warning under ``evapotranspiration_method``
+   in :doc:`configuration`; prefer measured (``datafile``) ET where phenology and
+   temperature are out of phase.
+
 Reservoir-draw mode and temporal buffering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 

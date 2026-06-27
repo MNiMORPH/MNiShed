@@ -123,6 +123,22 @@ The ``catchment`` section
     of 1.0 (raw ET, no water-balance correction) with a ``UserWarning``
     naming the affected years.
 
+.. warning::
+
+    **Temperature-index ET and vegetation phenology.** Because
+    ``ThornthwaiteChang2019`` derives ET from temperature alone, it cannot
+    represent seasonality when the actual ET cycle is *out of phase with
+    temperature*. The clearest case is cold-region forests, where canopy
+    leaf-out lags spring warming by weeks: Thornthwaite ramps ET up with the
+    spring temperature rise, but little transpiration occurs before leaf-out,
+    so early-spring ET is over-estimated. In snowmelt basins this can
+    *consume the spring freshet* — evaporating meltwater that should appear
+    as streamflow — and, because calibration then lowers ``et_scale`` to
+    recover the annual water balance, it inflates flow in the remaining
+    seasons. Where phenology and temperature are out of phase, prefer
+    measured ET (``evapotranspiration_method: datafile``), ideally from a
+    remote-sensing / NDVI-based product that follows the actual green-up.
+
 Example:
 
 .. code-block:: yaml
