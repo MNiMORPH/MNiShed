@@ -650,7 +650,8 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   post_spinup_states=None, post_spinup_k=0,
                   start=None, end=None, spin_up_cycles=None,
                   metric='KGE', routing_N=2, routing_K=None,
-                  enforce_water_balance='water-year', _model=None):
+                  enforce_water_balance='water-year', store_fluxes=False,
+                  _model=None):
     """
     Run MNiShed and return a CalibResult named tuple.
 
@@ -1156,7 +1157,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         # forcing or by candidate parameters far from the decade optimum.
         if post_spinup_states is not None:
             _inject_post_spinup_states(b, post_spinup_states)
-        b.run(start=start, end=end)
+        b.run(start=start, end=end, store_fluxes=store_fluxes)
     else:
         # Full-record mode: spin up and score on the complete hydrodata.
         # initialize() runs an internal spin-up that can leave H_deficit_carry at
@@ -1164,7 +1165,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         b.H_deficit_carry = 0.0
         for _ in range(spin_up_cycles):
             b.run()
-        b.run()
+        b.run(store_fluxes=store_fluxes)
 
     # --- Capture end-of-run states for chaining to next decade ---
     # Flat/scalar for a single sub-catchment (back-compatible); nested per
