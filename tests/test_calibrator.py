@@ -186,3 +186,42 @@ def test_calibrator_nested_bit_identical(tmp_path):
                          sub_catchments=[land, land, lake])
     assert cal.score({n: params[n]["initial"] for n in cal.names}).score == \
         hand.score
+
+
+# --- Calibrator.score_windows: multi-window objective -------------------
+
+def test_score_windows_per_window(tmp_path):
+    """score_windows returns one CalibResult per driver window, each equal to the
+    single-window score() for that span."""
+    model_path, modules = _flat_model(tmp_path)
+    cfg = _flat_params(model_path)
+    windows = [{"start": "1993-01-01", "end": "1993-12-31"},
+               {"start": "1994-01-01", "end": "1994-12-31"}]
+    cfg["driver"]["decades"] = windows
+    cal = Calibrator(cfg["parameters"], cfg["driver"], modules)
+    theta = {"log__rec_shallow": 1.4, "log__rec_deep": 2.7, "f_exf": 0.4,
+             "melt": 1.6}
+    results = cal.score_windows(theta)
+    assert len(results) == 2
+    for w, r in zip(windows, results):
+        assert r.score == cal.score(theta, start=w["start"], end=w["end"]).score
+    assert results[0].score != results[1].score          # disjoint years differ
+
+
+def test_score_windows_single_default_and_override(tmp_path):
+    """Without a decades: list, score_windows is one full-record window == score();
+    an explicit windows= overrides the driver default."""
+    model_path, modules = _flat_model(tmp_path)
+    cfg = _flat_params(model_path)
+    cal = Calibrator(cfg["parameters"], cfg["driver"], modules)
+    theta = {"log__rec_shallow": 1.4, "log__rec_deep": 2.7, "f_exf": 0.4,
+             "melt": 1.6}
+    default = cal.score_windows(theta)
+    assert len(default) == 1
+    assert default[0].score == cal.score(theta).score
+    override = cal.score_windows(
+        theta, windows=[{"start": "1993-01-01", "end": "1993-12-31"},
+                        {"start": "1994-01-01", "end": "1994-12-31"}])
+    assert len(override) == 2
+    assert override[0].score == cal.score(theta, start="1993-01-01",
+                                          end="1993-12-31").score
