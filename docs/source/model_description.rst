@@ -947,6 +947,48 @@ warmth predicts leaf-out — while the energy-based option carries its own forci
 and parameter burden and is not automatically better than a cheap prescribed
 phenology factor for a given basin.
 
+Vegetation phenology coefficient (optional)
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When enabled (see :doc:`configuration`), a growing-degree-day (GDD) vegetation
+coefficient :math:`K_c` reshapes the Thornthwaite demand to follow thermal-time
+leaf-out instead of temperature.  Growing-degree-days accumulate from the start of
+each calendar year,
+
+.. math::
+
+   \mathrm{GDD}(t) = \sum_{\tau \le t}
+       \max\!\left(\bar{T}_\tau - T_\text{base},\; 0\right),
+   \qquad \bar{T} = \tfrac{1}{2}\left(T_{\max} + T_{\min}\right),
+
+and drive a canopy fraction that greens up in spring (by thermal time) and
+senesces in autumn (by day of year :math:`d`),
+
+.. math::
+
+   c(t) = \operatorname{clip}\!\left(
+            \frac{\mathrm{GDD}(t) - \mathrm{GDD}_\text{leaf}}
+                 {\mathrm{GDD}_\text{full} - \mathrm{GDD}_\text{leaf}},\, 0,\, 1\right)
+          \;\left[1 - \operatorname{clip}\!\left(
+            \frac{d - d_\text{sen,0}}{d_\text{sen,1} - d_\text{sen,0}},\, 0,\, 1\right)\right].
+
+The coefficient ramps linearly between a dormant and a full-canopy value and
+multiplies the reference ET,
+
+.. math::
+
+   K_c(t) = K_{c,\text{dormant}}
+            + \left(K_{c,\text{full}} - K_{c,\text{dormant}}\right)\, c(t),
+   \qquad ET = K_c \cdot ET_0 .
+
+Because :math:`\mathrm{GDD}` enters nonlinearly (a thresholded ramp),
+:math:`K_c` is not collinear with the annual ``et_scale`` and so corrects seasonal
+*phasing* rather than being absorbed by the water-balance scaling.  Of its
+parameters only :math:`\mathrm{GDD}_\text{leaf}` (green-up timing) is exposed for
+calibration; the rest are fixed from priors.  :math:`K_c` applies to land ET only —
+lake open-water evaporation uses :math:`ET_0` directly, as open water has no leaf
+phenology.
+
 Reservoir-draw mode and temporal buffering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
