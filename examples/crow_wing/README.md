@@ -5,7 +5,7 @@ A worked example that exercises three of MNiShed's optional process modules
 the Cannon example (`../cannon_inverse/`) is about calibration and
 identifiability, this one is about the *process structure*: how a lake, a split
 land surface, and a vegetation-phenology ET coefficient combine to reproduce a
-northern-forest hydrograph across nine decades.
+northern-forest hydrograph across eight decade-long windows.
 
 **Catchment:** Crow Wing River, north-central Minnesota (~2335 km²; sandy
 outwash, mixed forest, many lakes and wetlands)
