@@ -330,6 +330,43 @@ For an **external** optimizer instead (e.g. Dakota, for expensive models or
 cluster runs), write a thin driver that calls ``run_and_score`` directly; see
 ``examples/cannon_inverse/`` for both paths.
 
+Seasonal mass-balance diagnostic
+^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+When a fit leaves a *structured seasonal residual* — spring under, fall over, a
+missing freshet — the hydrograph alone does not say whether the error is in ET,
+routing, storage, or recession; they look alike. :class:`~mnished.SeasonalMassBalance`
+turns "the seasonality is wrong" into "*which* flux, source, or timing is wrong"
+by decomposing the basin water balance per season, with **discharge split by
+source** (fast/event, slow/baseflow, lake outlet):
+
+.. code-block:: python
+
+   from mnished import run_and_score, SeasonalMassBalance
+
+   result = run_and_score(cfg, ..., store_fluxes=True)   # record the partition
+   smb = SeasonalMassBalance(result.buckets, start='2001-01-01', end='2010-12-31')
+   print(smb.report())                  # seasonal + monthly climatology + annual
+   smb.seasonal_table()                 # DataFrame: P, ET, dS, obs, mod, mod/obs, fast, slow, lake
+
+``store_fluxes=True`` records the per-source partition during the run (the three
+source columns sum exactly to the modeled discharge); it uses the pure-Python
+time loop, which is fine for a post-calibration analysis. The patterns that make
+the table diagnostic:
+
+* summer **ET > P** but modeled Q still over observed → the surplus is
+  **slow-store release** (baseflow not receding), not an ET deficit;
+* the freshet missing **and** spring ET ≈ P at melt → ET is **consuming the
+  melt** (a temperature-index ET phasing problem — see the phenology coefficient
+  in :doc:`configuration`);
+* a per-source flow **flat across seasons** → that reservoir is not responding
+  seasonally (an over-buffered lake, or a non-receding groundwater store).
+
+It is what separates an ET-phasing error from a routing, storage, or recession
+error — the step that, on the Crow Wing River, reframed a suspected lake-routing
+problem as the Thornthwaite spring-ET phasing the phenology coefficient now
+corrects.
+
 Practical Calibration Workflow
 -------------------------------
 
