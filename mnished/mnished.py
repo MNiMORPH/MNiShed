@@ -1886,19 +1886,11 @@ class Buckets(object):
                 "or supply measured ET via evapotranspiration_method: datafile.",
                 stacklevel=2,
             )
-        if self.use_phenology:
-            if self.et_method != 'ThornthwaiteChang2019':
-                warnings.warn(
-                    "phenology Kc is defined on the ThornthwaiteChang2019 ET "
-                    "demand; with et_method='datafile' it is ignored.",
-                    UserWarning, stacklevel=2)
-            elif self.enforce_water_balance == 'water-year':
-                warnings.warn(
-                    "phenology Kc reshapes ET, but the 'water-year' multiplier "
-                    "is not yet Kc-aware, so per-year closure is approximate. "
-                    "Use enforce_water_balance='global', or et_scale / stress "
-                    "closure, for exact annual balance with phenology.",
-                    UserWarning, stacklevel=2)
+        if self.use_phenology and self.et_method != 'ThornthwaiteChang2019':
+            warnings.warn(
+                "phenology Kc is defined on the ThornthwaiteChang2019 ET "
+                "demand; with et_method='datafile' it is ignored.",
+                UserWarning, stacklevel=2)
         self.compute_ET()
 
         # Model spin-up, if requested
@@ -1943,11 +1935,7 @@ class Buckets(object):
             End of the window used to compute the multiplier (inclusive).
             If None, uses the full record.
         """
-        if self.et_method == 'datafile':
-            _raw_ET = np.asarray(self.hydrodata['Evapotranspiration [mm/day]'])
-        else:
-            _raw_ET = (np.asarray(self.evapotranspiration_Chang2019())
-                       * self.phenology_Kc())
+        _raw_ET = self._demand_ET()
 
         # Mask to days where all three water-balance terms are finite so that
         # P_sum, ET_sum, and Q_sum are computed over the same day-set.
@@ -1994,8 +1982,16 @@ class Buckets(object):
             / self.hydrodata_WY_means['Precipitation [mm/day]'])
         _ET_required = -(self.hydrodata_WY_means['Specific Discharge [mm/day]'] -
                          self.hydrodata_WY_means['Precipitation [mm/day]'])
+        # Normalise against the actual ET *demand* compute_ET will scale
+        # (Thornthwaite × phenology, or measured ET), not the raw input ET
+        # column. For datafile mode the demand equals that column, so this is
+        # unchanged; for Thornthwaite (and with phenology) it is what closes the
+        # per-water-year balance. See _demand_ET().
+        _demand_WY_mean = pd.Series(
+            self._demand_ET(), index=self.hydrodata.index
+        ).groupby(self.hydrodata['Water Year']).mean()
         self.hydrodata_WY_means['ET multiplier'] = (
-            _ET_required / self.hydrodata_WY_means['Evapotranspiration [mm/day]'])
+            _ET_required / _demand_WY_mean)
 
         _bad_wy = self.hydrodata_WY_means.index[
             self.hydrodata_WY_means['ET multiplier'] <= 0]
@@ -2057,6 +2053,31 @@ class Buckets(object):
         self._phenology_Kc_cache = Kc
         return Kc
 
+    def _demand_ET(self):
+        """
+        The canonical daily ET *demand* series.
+
+        This is the single series that the water-balance multipliers normalise
+        against and that :meth:`compute_ET` scales: the measured ET (``datafile``
+        mode) or the Thornthwaite–Chang reference ET with the vegetation
+        phenology coefficient applied (``ThornthwaiteChang2019`` mode). Defining
+        it once keeps the per-water-year multiplier (:meth:`compute_ET_multiplier`),
+        the global multiplier (:meth:`compute_global_ET_multiplier`), and the
+        applied ET (:meth:`compute_ET`) consistent, so the water balance closes
+        for every ``et_method`` × ``enforce_water_balance`` combination, phenology
+        included. (Earlier, the water-year multiplier normalised against the raw
+        input ET column rather than the applied demand, so Thornthwaite — and
+        phenology — did not close under water-year scaling.)
+        """
+        if self.et_method == 'datafile':
+            return np.asarray(self.hydrodata['Evapotranspiration [mm/day]'],
+                              dtype=float)
+        elif self.et_method == 'ThornthwaiteChang2019':
+            return (np.asarray(self.evapotranspiration_Chang2019(), dtype=float)
+                    * self.phenology_Kc())
+        raise ValueError('evapotranspiration_method must be "datafile" or '
+                         '"ThornthwaiteChang2019".')
+
     def compute_ET(self):
         """
         Build the ET time series used in the model.
@@ -2090,14 +2111,8 @@ class Buckets(object):
         # the Buckets, so a reused ScoringModel never recomputes it.
         if getattr(self, '_raw_ET_cache', None) is not None:
             _raw_ET = self._raw_ET_cache
-        elif self.et_method == 'datafile':
-            _raw_ET = self.hydrodata['Evapotranspiration [mm/day]']
-        elif self.et_method == 'ThornthwaiteChang2019':
-            _raw_ET = np.asarray(self.evapotranspiration_Chang2019()) \
-                * self.phenology_Kc()
         else:
-            raise ValueError('evapotranspiration_method must be "datafile" or '+
-                             '"ThornthwaiteChang2019".')
+            _raw_ET = self._demand_ET()
         self._raw_ET_cache = _raw_ET
 
         if self.use_et_water_stress or (self.use_et_reservoir_draw and
