@@ -367,6 +367,47 @@ error — the step that, on the Crow Wing River, reframed a suspected lake-routi
 problem as the Thornthwaite spring-ET phasing the phenology coefficient now
 corrects.
 
+Parameter identifiability
+^^^^^^^^^^^^^^^^^^^^^^^^^^
+
+A good score does not mean every parameter was *constrained* by the data: some
+combinations are tightly determined (**stiff**), while others can vary widely with
+little effect on the fit (**sloppy**, or degenerate). The ``mnished.identifiability``
+tools characterise this around a fitted :class:`~mnished.ParameterSet`, given an
+``objective`` that maps a parameter set to a scalar to minimise (e.g. ``1 - KGE``):
+
+* :func:`~mnished.profile` / :func:`~mnished.profile_all` — vary one parameter at
+  a time and trace the objective, giving a per-parameter likelihood profile and an
+  approximate confidence interval; a flat profile means the data do not constrain
+  that parameter.
+* :func:`~mnished.eigenspectrum` — the eigendecomposition of the objective's
+  curvature (the Hessian). The eigenvalues span the stiff-to-sloppy range (a large
+  condition number signals near-degeneracy), and each eigenvector names the
+  *combination* of parameters that is stiff or sloppy — often more informative than
+  any single parameter. Parameters pegged at a bound are excluded, so one pegged
+  parameter no longer voids the spectrum.
+* :func:`~mnished.ridge` — a 2-D objective map over a pair of parameters, which
+  exposes a degenerate **ridge** directly (a valley along which the fit barely
+  changes — e.g. an exfiltration fraction trading against a soil timescale).
+
+.. code-block:: python
+
+   from mnished import ParameterSet, Parameter, profile_all, eigenspectrum, ridge
+
+   pset = ParameterSet([
+       Parameter('log__t_recession_shallow', value=1.4, lower=0.3, upper=2.0),
+       Parameter('f_exfiltration_shallow',   value=0.6, lower=0.01, upper=0.99)])
+
+   report = profile_all(objective, pset)         # IdentifiabilityReport
+   report.summary()                              # per-parameter intervals + flags
+   eigenspectrum(objective, pset).summary()      # stiff/sloppy eigenvalues + vectors
+   ridge(objective, pset, 'log__t_recession_shallow',
+         'f_exfiltration_shallow').plot()
+
+Use it to decide which parameters to **fix from priors** rather than calibrate —
+the same reasoning behind exposing only ``leafout_GDD`` for the phenology
+coefficient and deriving the lake outlet coefficient from geometry.
+
 Practical Calibration Workflow
 -------------------------------
 
