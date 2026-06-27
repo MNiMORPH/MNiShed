@@ -15,6 +15,40 @@ routing through cascading reservoirs (linear or nonlinear power-law), and
 evapotranspiration. Basin streamflow is the area-weighted mean of the
 sub-catchments.
 
+.. graphviz::
+   :align: center
+   :caption: Model overview — precipitation passes through an optional snowpack
+             into each parallel sub-catchment (a reservoir cascade, or a lake),
+             whose discharges are area-weighted into basin streamflow;
+             evapotranspiration is removed along the way.
+
+   digraph overview {
+       rankdir=LR;
+       node [shape=box, style="rounded,filled", fillcolor=white,
+             fontname="Helvetica", fontsize=10];
+       edge [fontname="Helvetica", fontsize=9];
+
+       P    [label="Precipitation", fillcolor="#eaf2fb"];
+       snow [label="Snowpack\n(optional)\nSWE, degree-day melt"];
+       et   [label="Evapotranspiration", shape=ellipse, fillcolor="#fbeaea"];
+       Q    [label="Streamflow\n(area-weighted mean)", fillcolor="#eaf2fb"];
+
+       subgraph cluster_sc {
+           label="parallel sub-catchments";
+           style=dashed; color="#999"; fontname="Helvetica"; fontsize=9;
+           land [label="land zone\nreservoir cascade", fillcolor="#eef7ee"];
+           lake [label="lake\nopen water + outlet", fillcolor="#eaf6ea"];
+       }
+
+       P -> snow;
+       snow -> land; snow -> lake;
+       land -> Q; lake -> Q;
+       land -> lake [label="Q_gw, f_route", style=dashed, color="#3a7",
+                     fontcolor="#3a7"];
+       land -> et [style=dashed, dir=back, color="#c66", fontcolor="#c66"];
+       lake -> et [style=dashed, dir=back, color="#c66"];
+   }
+
 All fluxes are expressed as depths over the drainage basin (mm/day).
 Mass is conserved to within numerical precision.
 
@@ -65,6 +99,29 @@ area-weighted mean:
 .. math::
 
     Q_{\text{basin}} = \sum_{k=1}^{K} a_k \, Q_k
+
+.. graphviz::
+   :align: center
+   :caption: Sub-catchments drain to the same channel *in parallel*: each zone
+             runs its own cascade (or is a lake) over a basin-area fraction
+             :math:`a_k`, and the per-unit-area discharges are area-weighted into
+             basin streamflow.
+
+   digraph subcatchments {
+       rankdir=LR;
+       node [shape=box, style="rounded,filled", fillcolor="#eef7ee",
+             fontname="Helvetica", fontsize=10];
+       edge [fontname="Helvetica", fontsize=9];
+
+       z1 [label="till upland\n(a = 0.5)"];
+       z2 [label="tile-drained\n(a = 0.3)"];
+       z3 [label="lake\n(a = 0.2)", fillcolor="#eaf6ea"];
+       Q  [label="Q_basin = Σ aₖ Qₖ", shape=box, fillcolor="#eaf2fb"];
+
+       z1 -> Q [label="a·Q₁"];
+       z2 -> Q [label="a·Q₂"];
+       z3 -> Q [label="a·Q₃"];
+   }
 
 Storage is area-weighted the same way (:math:`\sum_k a_k H_k`), so the basin
 water balance is exact for any number of sub-catchments. With :math:`K = 1` and
@@ -476,6 +533,30 @@ where:
 **Constraint:**
   The bottom reservoir should fully discharge (:math:`f_{\text{bottom}} = 1.0`).
   A warning is issued if not, as this violates mass conservation.
+
+.. graphviz::
+   :align: center
+   :caption: The vertical reservoir cascade. Recharge enters the top (shallow)
+             reservoir; each reservoir exfiltrates a fraction :math:`f_i` of its
+             drainage to the stream and passes the rest down. The bottom
+             reservoir discharges fully (:math:`f = 1`).
+
+   digraph cascade {
+       rankdir=TB;
+       node [shape=box, style="rounded,filled", fillcolor="#eef7ee",
+             fontname="Helvetica", fontsize=10];
+       edge [fontname="Helvetica", fontsize=9];
+
+       rech   [label="recharge\n(P − E, or snowmelt)", fillcolor="#eaf2fb"];
+       r0     [label="reservoir 0 — soil zone\nτ₀, b₀"];
+       r1     [label="reservoir 1 — groundwater\nτ₁, b₁"];
+       stream [label="stream", fillcolor="#eaf2fb"];
+
+       rech -> r0;
+       r0 -> stream [label="f₀ · Q₀  exfiltrate"];
+       r0 -> r1     [label="(1 − f₀) · Q₀  infiltrate"];
+       r1 -> stream [label="f₁ = 1 · Q₁"];
+   }
 
 **Storage Update:**
   Recharge is applied first, then exponential drainage:
