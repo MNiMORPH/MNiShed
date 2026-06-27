@@ -1737,6 +1737,21 @@ class Buckets(object):
             self.use_et_water_stress = False
         self.et_scale = 1.0   # universal ET multiplier; default 1.0 (no-op); override via
         #                       run_and_score(et_scale=) or as a free calibration parameter
+        # Optional GDD vegetation-phenology coefficient (Kc) on the Thornthwaite
+        # demand; off by default. See phenology_Kc(). Reshapes the seasonal ET
+        # cycle to follow thermal-time leaf-out instead of temperature, leaving
+        # annual closure to the water-balance / et_scale correction.
+        _phen = self.cfg.get('phenology', {}) or {}
+        self.use_phenology = bool(_phen.get('enabled', False))
+        self.phenology_params = {
+            'base_temperature__C':  _phen.get('base_temperature__C', 5.0),
+            'leafout_GDD':          _phen.get('leafout_GDD', 100.0),
+            'full_canopy_GDD':      _phen.get('full_canopy_GDD', 400.0),
+            'dormant_Kc':           _phen.get('dormant_Kc', 0.4),
+            'full_Kc':              _phen.get('full_Kc', 1.0),
+            'senescence_start_doy': _phen.get('senescence_start_doy', 260),
+            'senescence_end_doy':   _phen.get('senescence_end_doy', 305),
+        }
         # Fraction of ET_pot drawn from reservoir 0 (shallow); 1-et_alpha from reservoir 1.
         # Read from general: et_alpha in config YAML; override via run_and_score(et_alpha=).
         self.et_alpha = self.cfg['general'].get('et_alpha', 1.0)
@@ -1871,6 +1886,19 @@ class Buckets(object):
                 "or supply measured ET via evapotranspiration_method: datafile.",
                 stacklevel=2,
             )
+        if self.use_phenology:
+            if self.et_method != 'ThornthwaiteChang2019':
+                warnings.warn(
+                    "phenology Kc is defined on the ThornthwaiteChang2019 ET "
+                    "demand; with et_method='datafile' it is ignored.",
+                    UserWarning, stacklevel=2)
+            elif self.enforce_water_balance == 'water-year':
+                warnings.warn(
+                    "phenology Kc reshapes ET, but the 'water-year' multiplier "
+                    "is not yet Kc-aware, so per-year closure is approximate. "
+                    "Use enforce_water_balance='global', or et_scale / stress "
+                    "closure, for exact annual balance with phenology.",
+                    UserWarning, stacklevel=2)
         self.compute_ET()
 
         # Model spin-up, if requested
@@ -1918,7 +1946,8 @@ class Buckets(object):
         if self.et_method == 'datafile':
             _raw_ET = np.asarray(self.hydrodata['Evapotranspiration [mm/day]'])
         else:
-            _raw_ET = np.asarray(self.evapotranspiration_Chang2019())
+            _raw_ET = (np.asarray(self.evapotranspiration_Chang2019())
+                       * self.phenology_Kc())
 
         # Mask to days where all three water-balance terms are finite so that
         # P_sum, ET_sum, and Q_sum are computed over the same day-set.
@@ -1979,6 +2008,55 @@ class Buckets(object):
                 stacklevel=2,
             )
 
+    def phenology_Kc(self):
+        """
+        Daily vegetation coefficient (Kc) from a growing-degree-day leaf-out model.
+
+        Returns a per-day multiplier in ``[dormant_Kc, full_Kc]`` that reshapes
+        the ET demand to follow thermal-time canopy phenology rather than
+        temperature: Kc holds at ``dormant_Kc`` through winter and early spring,
+        ramps up as accumulated growing-degree-days (GDD, base
+        ``base_temperature__C``, reset each calendar year) rise from
+        ``leafout_GDD`` to ``full_canopy_GDD``, holds at ``full_Kc`` through
+        summer, then declines back to ``dormant_Kc`` over a day-of-year
+        senescence window (``senescence_start_doy`` → ``senescence_end_doy``).
+
+        Because GDD enters nonlinearly (a thresholded ramp), the factor is not
+        collinear with the annual ``et_scale``, so it can correct seasonal
+        *phasing* rather than being absorbed by the water-balance correction.
+        Suppressing early-spring ET keeps temperature-index ET from evaporating
+        the snowmelt freshet before leaf-out (see the phenology note in the ET
+        documentation).
+
+        Returns ``1.0`` (a no-op multiplier) when phenology is disabled. Depends
+        only on the temperature record and dates — not on calibrated parameters —
+        so the result is cached and rides along on a reused ScoringModel.
+        """
+        if not getattr(self, 'use_phenology', False):
+            return 1.0
+        if getattr(self, '_phenology_Kc_cache', None) is not None:
+            return self._phenology_Kc_cache
+        p = self.phenology_params
+        Tmean = 0.5 * (
+            np.asarray(self.hydrodata['Maximum Temperature [C]'], dtype=float)
+            + np.asarray(self.hydrodata['Minimum Temperature [C]'], dtype=float))
+        gdd_day = np.maximum(Tmean - p['base_temperature__C'], 0.0)
+        dates = pd.DatetimeIndex(self.hydrodata['Date'])
+        years = dates.year.to_numpy()
+        doy = dates.dayofyear.to_numpy()
+        GDD = np.empty_like(gdd_day)
+        for y in np.unique(years):           # reset accumulation each calendar year
+            m = years == y
+            GDD[m] = np.nancumsum(gdd_day[m])
+        span = max(p['full_canopy_GDD'] - p['leafout_GDD'], 1e-9)
+        spring = np.clip((GDD - p['leafout_GDD']) / span, 0.0, 1.0)
+        sen_span = max(p['senescence_end_doy'] - p['senescence_start_doy'], 1e-9)
+        senesce = np.clip((doy - p['senescence_start_doy']) / sen_span, 0.0, 1.0)
+        canopy = spring * (1.0 - senesce)
+        Kc = p['dormant_Kc'] + (p['full_Kc'] - p['dormant_Kc']) * canopy
+        self._phenology_Kc_cache = Kc
+        return Kc
+
     def compute_ET(self):
         """
         Build the ET time series used in the model.
@@ -2015,7 +2093,8 @@ class Buckets(object):
         elif self.et_method == 'datafile':
             _raw_ET = self.hydrodata['Evapotranspiration [mm/day]']
         elif self.et_method == 'ThornthwaiteChang2019':
-            _raw_ET = self.evapotranspiration_Chang2019()
+            _raw_ET = np.asarray(self.evapotranspiration_Chang2019()) \
+                * self.phenology_Kc()
         else:
             raise ValueError('evapotranspiration_method must be "datafile" or '+
                              '"ThornthwaiteChang2019".')
