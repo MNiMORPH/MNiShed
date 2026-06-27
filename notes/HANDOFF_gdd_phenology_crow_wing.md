@@ -32,12 +32,18 @@ phenology:
 Defaults give a mid-to-late-May leaf-out (north-central MN). Raise `leafout_GDD`
 to delay green-up, lower to advance.
 
-## ⚠️ Use global (not water-year) closure
+## Water-balance closure
 
-Run with `enforce_water_balance: 'global'` (or your `et_scale`/stress closure).
-**Do not use `'water-year'`** — its per-year multiplier isn't Kc-aware yet (it will
-warn), so annual closure would be only approximate. Under global closure the annual
-ET total is preserved *exactly* while the season is reshaped.
+`'global'`, `'water-year'`, and `et_scale`/stress closure all now normalise
+against the phenology-adjusted demand, so the annual total is preserved exactly
+whichever you use (the earlier "water-year isn't Kc-aware" gap is fixed — see the
+`_demand_ET` water-balance fix, which also fixed a pre-existing Thornthwaite +
+water-year non-closure unrelated to phenology). `'global'` is still a clean,
+simple choice for this test.
+
+**Note:** the fix landed in `~/models/MNiShed` after this test may have started —
+a long-running Python process won't pick it up until restarted, so a fresh run
+(`git -C ~/models/MNiShed pull` if needed) gets both the closure fix and phenology.
 
 ## What to expect / check
 
@@ -67,8 +73,9 @@ print(pd.Series(Kc, index=b.hydrodata['Date'].dt.month)
 
 ## Known gaps (deliberate, for a first cut)
 
-- `'water-year'` closure not yet Kc-aware → use `'global'`.
 - Fall senescence is **day-of-year** (calendar); the spring/freshet limb is fully
   GDD-driven.
 - Kc params are config-set, **not wired as calibration targets** (cache assumes
   fixed within a run) — calibrating them is a follow-up.
+
+(The `'water-year'` closure gap noted in the first cut is now fixed.)
