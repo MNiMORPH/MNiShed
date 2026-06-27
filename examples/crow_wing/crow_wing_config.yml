@@ -1,0 +1,110 @@
+# Crow Wing River, north-central Minnesota — a worked example exercising three
+# of MNiShed's optional process modules together in one real basin:
+#
+#   * LAKES          — a series outlet element (threshold + 5/3 Manning
+#                      spillover, bidirectional groundwater exchange) that
+#                      buffers part of the catchment.
+#   * SUB-CATCHMENTS — two parallel land zones: one that drains directly to the
+#                      gauge, and one whose drainage is routed THROUGH the lake.
+#   * PHENOLOGY      — a growing-degree-day vegetation coefficient (Kc) that
+#                      reshapes Thornthwaite ET to the forest's leaf-out and
+#                      senescence, fixing the spring freshet and fall recession.
+#
+# Frozen ground (FGI) is the seasonally-gated fast pathway the snowmelt freshet
+# needs: when the frozen-ground index exceeds fdd_threshold the soil's top
+# reservoir is forced f_to_discharge = 1.0 (all snowmelt -> direct runoff), and
+# normal infiltration resumes on thaw. For this sandy outwash basin that is the
+# dominant overland-flow control (sand only sheds water when frozen). The PDM
+# saturation-excess store is disabled (pdm_H0__mm null) — it fired on summer
+# rain and was rejected by calibration.
+#
+# Land structure: each land zone is a two-reservoir cascade — a shallow "soil"
+# store (fast recession) over a deep "groundwater" store (slow recession). The
+# lake is a third sub-catchment of kind "lake" at the outlet.
+#
+# Physical parameters here are starting points; calibration overrides the
+# free ones via the `target:` mappings in params.yml (see that file and the
+# README). Forcing path is relative so the example is self-contained.
+
+timeseries:
+  datafile: crow_wing_forcing.csv
+
+catchment:
+  drainage_basin_area__km2: 2334.8
+  evapotranspiration_method: ThornthwaiteChang2019
+  water_year_start_month: 10
+  baseflow_Q: 0.0
+
+general:
+  spin_up_cycles: 1
+
+sub_catchments:
+  # Zone 1: land that drains DIRECTLY to the gauge (no lake in the path).
+  - name: direct_land
+    area_fraction: 0.30
+    reservoirs:
+      recession_coefficients:       [20.0, 3000.0]   # [soil tau, gw tau] (days)
+      exfiltration_fractions:       [0.5, 1.0]        # soil split to stream vs gw
+      maximum_effective_depths__mm: [1000000000.0, 1000000000.0]
+      pdm_H0__mm:                   [null, null]      # PDM disabled
+      multipath_thresholds__mm:     [10000000000.0, 10000000000.0]
+      multipath_timescales__days:   [1.0, 1.0]
+      recession_exponents:          [1.0, 1.0]
+    initial_conditions:
+      water_reservoir_effective_depths__mm: [50.0, 500.0]
+
+  # Zone 2: land whose drainage is routed THROUGH the lake (see f_route_lake).
+  - name: lake_basin_land
+    area_fraction: 0.40
+    reservoirs:
+      recession_coefficients:       [20.0, 3000.0]
+      exfiltration_fractions:       [0.5, 1.0]
+      maximum_effective_depths__mm: [1000000000.0, 1000000000.0]
+      pdm_H0__mm:                   [null, null]
+      multipath_thresholds__mm:     [10000000000.0, 10000000000.0]
+      multipath_timescales__days:   [1.0, 1.0]
+      recession_exponents:          [1.0, 1.0]
+    initial_conditions:
+      water_reservoir_effective_depths__mm: [50.0, 500.0]
+
+  # The lake: a series element at the outlet. Stores water above sill_storage
+  # and releases it as Q = a*(H - H_sill)^(5/3) (Manning-like spillover); shares
+  # groundwater bidirectionally with its gw_partner (lake_basin_land).
+  - name: lake
+    kind: lake
+    area_fraction: 0.30
+    lake:
+      outflow_coefficient: 0.005
+      sill_storage__mm:    250.0
+      outflow_exponent:    1.6667     # 5/3, Manning wide-channel spillover
+      gw_partner:          lake_basin_land
+      f_route_lake:        0.4        # zone-2 fraction routed through lake (calibration start; overridden by params.yml)
+    initial_conditions:
+      lake_storage__mm:    600.0
+
+snowmelt:
+  PDD_melt_factor: 4.0               # degree-day melt rate (calibrated)
+  fgi_decay_coeff: 0.97
+  snow_insulation_k: 0.0
+
+modules:
+  snowpack: true
+  frozen_ground: true                # seasonally-gated freshet pathway
+  rain_on_snow: true
+  direct_runoff: false               # PDM/direct bypass disabled
+
+# Growing-degree-day vegetation coefficient (Kc) on ET. Thornthwaite ET is
+# temperature-only and ramps too early in spring for a northern forest, which
+# evaporates the snowmelt freshet; the GDD Kc holds ET down until thermal-time
+# leaf-out, then ramps to full canopy and back down through senescence.
+# leafout_GDD is the one calibrated knob (see params.yml); for north-central MN
+# it settles near ~200 GDD = a late-May green-up, matching regional phenology.
+phenology:
+  enabled: true
+  base_temperature__C:  5.0    # GDD base (~deciduous)
+  leafout_GDD:          200.0  # cumulative GDD (reset Jan 1) at green-up onset
+  full_canopy_GDD:      400.0  # cumulative GDD at full canopy
+  dormant_Kc:           0.5    # ET coefficient outside the growing season
+  full_Kc:              1.0    # ET coefficient at full canopy
+  senescence_start_doy: 260    # fall ramp-down begins (~mid-Sep)
+  senescence_end_doy:   305    # fully dormant (~early Nov)
