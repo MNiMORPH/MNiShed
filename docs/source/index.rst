@@ -50,6 +50,7 @@ Ideal for long water-balance studies, climate impact assessments, and ungauged b
 
    configuration
    model_description
+   example_crow_wing
 
 .. toctree::
    :maxdepth: 2

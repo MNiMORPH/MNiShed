@@ -208,6 +208,13 @@ multiplier can over-produce other seasons when it cannot tune the annual level.
 The closure also trades against melt-factor peakiness: a sharper melt factor gives
 stronger freshet peaks but a harder-to-balance annual total.
 
+.. seealso::
+
+   The :doc:`example_crow_wing` worked example calibrates ``leafout_GDD`` on a
+   real northern-forest basin (settling at a latitude-appropriate late-May
+   green-up) and shows how the phenology coefficient fixes an evaporated snowmelt
+   freshet.
+
 The ``general`` section
 ~~~~~~~~~~~~~~~~~~~~~~~
 
