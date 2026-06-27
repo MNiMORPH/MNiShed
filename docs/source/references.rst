@@ -54,6 +54,12 @@ FAO Irrigation and Drainage Paper 56. FAO, Rome.
 https://www.fao.org/3/x0490e/x0490e00.htm
 (Equations 2--4 used for photoperiod computation in the Thornthwaite--Chang method.)
 
+Thornthwaite, C. W. (1948). An approach toward a rational classification of
+climate. *Geographical Review*, 38(1), 55--94.
+https://doi.org/10.2307/210739
+(Original temperature-index ET method; the Chang (2019) variant used here is a
+daily modification of it.)
+
 Camargo, A. P., Marin, F. R., Sentelhas, P. C., & Picini, A. G. (1999).
 Adjust of the Thornthwaite's method to estimate the potential
 evapotranspiration for arid and superhumid climates based on daily temperature
@@ -71,6 +77,14 @@ Pereira, A. R., & Pruitt, W. O. (2004). Adaptation of the Thom and Oliver
 evaporation equation to daily totals.
 *Agricultural and Forest Meteorology*, 124(1-2), 26--32.
 https://doi.org/10.1016/j.agrformet.2004.01.005
+
+Schwartz, M. D., Ault, T. R., & Betancourt, J. L. (2013). Spring onset
+variations and trends in the continental United States: past and regional
+assessment using temperature-based indices.
+*International Journal of Climatology*, 33(13), 2917--2922.
+https://doi.org/10.1002/joc.3625
+(Temperature-based spring-index phenology, background for the growing-degree-day
+vegetation coefficient.)
 
 Reservoir Cascade Structure
 ~~~~~~~~~~~~~~~~~~~~~~~~~~~
@@ -140,6 +154,26 @@ conceptual models part I -- A discussion of principles.
 *Journal of Hydrology*, 10(3), 282--290.
 https://doi.org/10.1016/0022-1694(70)90255-6
 
+Brun, R., Reichert, P., & Künsch, H. R. (2001). Practical identifiability
+analysis of large environmental simulation models.
+*Water Resources Research*, 37(4), 1015--1030.
+https://doi.org/10.1029/2000WR900350
+(Identifiability via parameter sensitivities and collinearity — the basis for
+the profile and curvature-eigenspectrum diagnostics.)
+
+Gutenkunst, R. N., Waterfall, J. J., Casey, F. P., Brown, K. S., Myers, C. R.,
+& Sethna, J. P. (2007). Universally sloppy parameter sensitivities in systems
+biology models. *PLoS Computational Biology*, 3(10), e189.
+https://doi.org/10.1371/journal.pcbi.0030189
+(Origin of the stiff vs. sloppy eigenspectrum framing used in the
+identifiability tools.)
+
+Vrugt, J. A. (2016). Markov chain Monte Carlo simulation using the DREAM
+software package: Theory, concepts, and MATLAB implementation.
+*Environmental Modelling & Software*, 75, 273--316.
+https://doi.org/10.1016/j.envsoft.2015.08.013
+(The DREAM sampler used for the Bayesian / uncertainty-quantification path.)
+
 Software
 ~~~~~~~~
 
@@ -149,6 +183,12 @@ https://doi.org/10.1038/s41586-020-2649-2
 
 McKinney, W. (2010). Data structures for statistical computing in Python.
 In *Proceedings of the 9th Python in Science Conference* (Vol. 445, pp. 56--61).
+
+Houska, T., Kraft, P., Chamorro-Chavez, A., & Breuer, L. (2015). SPOTting model
+parameters using a ready-made Python package.
+*PLoS ONE*, 10(12), e0145180.
+https://doi.org/10.1371/journal.pone.0145180
+(The SPOTPY package driving the in-process SCE-UA and DREAM calibration runners.)
 
 External Resources
 ~~~~~~~~~~~~~~~~~~
