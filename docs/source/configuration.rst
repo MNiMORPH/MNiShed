@@ -165,10 +165,11 @@ reflects the canopy).
 
     phenology:
         enabled: true
+        leafout_GDD:          100.0  # green-up threshold — the one knob to tune / calibrate
+        # --- the rest are fixed from priors; defaults suit temperate deciduous ---
         base_temperature__C:  5.0    # GDD base temperature
-        leafout_GDD:          100.0  # cumulative GDD (reset each calendar year) at green-up
         full_canopy_GDD:      400.0  # cumulative GDD at full canopy
-        dormant_Kc:           0.4    # ET coefficient outside the growing season
+        dormant_Kc:           0.5    # ET coefficient outside the growing season
         full_Kc:              1.0    # ET coefficient at full canopy
         senescence_start_doy: 260    # day-of-year senescence begins (~mid-Sep)
         senescence_end_doy:   305    # day-of-year fully dormant (~early Nov)
@@ -177,12 +178,35 @@ reflects the canopy).
 accumulated GDD (base ``base_temperature__C``, reset each calendar year) rise from
 ``leafout_GDD`` to ``full_canopy_GDD``, holds at ``full_Kc`` through summer, then
 declines back to ``dormant_Kc`` over the day-of-year senescence window. The
-defaults give a mid-to-late-May leaf-out appropriate to north-central Minnesota;
-tune them to local phenology. Because GDD enters nonlinearly, the factor corrects
-seasonal *phasing* rather than being absorbed by the annual ``et_scale``. The
-water-balance correction (``'water-year'`` or ``'global'``) normalises against
-the phenology-adjusted demand, so the annual total is preserved exactly whichever
-closure you use.
+defaults give a mid-to-late-May leaf-out appropriate to north-central Minnesota.
+
+**One free parameter.** Only ``leafout_GDD`` (green-up timing) carries information
+the streamflow can constrain, so it is the only knob exposed as a calibration
+parameter — ``run_and_score(leafout_GDD=...)``, or ``target: leafout_GDD`` in a
+``params.yml``. The rest are deliberately fixed from priors: ``full_Kc`` and the
+overall :math:`K_c` magnitude are degenerate with ``et_scale`` (the water balance
+fixes the annual total, so only the :math:`K_c` *shape* matters);
+``base_temperature__C`` is collinear with the GDD threshold; and the senescence
+window is a stable seasonal prior. Set them deliberately, but do not calibrate
+them all at once — that would be a parameter-degeneracy machine. Where possible,
+fix ``leafout_GDD`` itself from regional phenology (e.g. a spring-index product)
+so phenology adds no free parameter at all.
+
+**Senescence is an active fall lever.** ``senescence_start_doy`` /
+``senescence_end_doy`` set how fast the canopy browns down, controlling the autumn
+ET draw and therefore autumn discharge — on the Crow Wing River this was the
+difference between a fall over-prediction and a closed fall balance. Treat the
+defaults as a temperate-deciduous starting point and adjust per basin.
+
+**Closure choice.** Because GDD enters nonlinearly, the factor corrects seasonal
+*phasing* rather than being absorbed by ``et_scale``, and the water-balance
+correction normalises against the phenology-adjusted demand, so the annual total
+is preserved under any closure. In practice ``enforce_water_balance: 'none'`` with
+a free ``et_scale`` gives the best phenology fit — ``et_scale`` is then free to set
+the annual level while ``leafout_GDD`` sets the phase, whereas a per-year or global
+multiplier can over-produce other seasons when it cannot tune the annual level.
+The closure also trades against melt-factor peakiness: a sharper melt factor gives
+stronger freshet peaks but a harder-to-balance annual total.
 
 The ``general`` section
 ~~~~~~~~~~~~~~~~~~~~~~~
