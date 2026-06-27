@@ -640,7 +640,7 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
                   leakance_R=None, leakance_R_calibrated=0,
                   H_threshold=None, H_threshold_calibrated=0,
                   melt_factor=None, fdd_threshold=None, snow_insulation_k=None,
-                  et_scale=None, et_alpha=None,
+                  et_scale=None, et_alpha=None, leafout_GDD=None,
                   wp_soil=None, wp_soil_sigma=None,
                   recession_exponents=None, recession_exponents_calibrated=0,
                   direct_runoff_fraction=None, baseflow_Q=None,
@@ -1044,6 +1044,20 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         k += len({ft for ft in f_tile if ft > 0.0})  # unique values = independent params
         if any_tile:
             k += 1  # tau_tile counted once across all tiled reservoirs
+
+    if leafout_GDD is not None:
+        # The one calibratable phenology parameter: thermal-time green-up
+        # threshold (the rest of the Kc curve is fixed from priors). Rebuilds
+        # the ET demand; the cached Thornthwaite reference ET is reused.
+        if not getattr(b, 'use_phenology', False):
+            warnings.warn(
+                "leafout_GDD was given but phenology is not enabled in the "
+                "config (phenology.enabled); it has no effect.",
+                UserWarning, stacklevel=2)
+        else:
+            b.phenology_params['leafout_GDD'] = leafout_GDD
+            b.compute_ET()   # re-build 'ET for model' with the new leaf-out
+            k += 1
 
     if et_scale is not None:
         if et_scale != 1.0 and b.enforce_water_balance != 'none':

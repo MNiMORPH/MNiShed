@@ -2033,14 +2033,14 @@ class Buckets(object):
         the snowmelt freshet before leaf-out (see the phenology note in the ET
         documentation).
 
-        Returns ``1.0`` (a no-op multiplier) when phenology is disabled. Depends
-        only on the temperature record and dates — not on calibrated parameters —
-        so the result is cached and rides along on a reused ScoringModel.
+        Returns ``1.0`` (a no-op multiplier) when phenology is disabled.
+        Recomputed on each call (a cheap vectorised GDD cumulative sum) rather
+        than cached, so ``leafout_GDD`` can be a calibration target without
+        staling a cache; the expensive Thornthwaite reference ET it multiplies is
+        cached separately in :meth:`_demand_ET`.
         """
         if not getattr(self, 'use_phenology', False):
             return 1.0
-        if getattr(self, '_phenology_Kc_cache', None) is not None:
-            return self._phenology_Kc_cache
         p = self.phenology_params
         Tmean = 0.5 * (
             np.asarray(self.hydrodata['Maximum Temperature [C]'], dtype=float)
@@ -2058,9 +2058,7 @@ class Buckets(object):
         sen_span = max(p['senescence_end_doy'] - p['senescence_start_doy'], 1e-9)
         senesce = np.clip((doy - p['senescence_start_doy']) / sen_span, 0.0, 1.0)
         canopy = spring * (1.0 - senesce)
-        Kc = p['dormant_Kc'] + (p['full_Kc'] - p['dormant_Kc']) * canopy
-        self._phenology_Kc_cache = Kc
-        return Kc
+        return p['dormant_Kc'] + (p['full_Kc'] - p['dormant_Kc']) * canopy
 
     def _demand_ET(self):
         """
@@ -2082,8 +2080,13 @@ class Buckets(object):
             return np.asarray(self.hydrodata['Evapotranspiration [mm/day]'],
                               dtype=float)
         elif self.et_method == 'ThornthwaiteChang2019':
-            return (np.asarray(self.evapotranspiration_Chang2019(), dtype=float)
-                    * self.phenology_Kc())
+            # Cache the expensive Thornthwaite reference ET (depends only on the
+            # forcing and fixed normals, not on calibrated parameters); reapply
+            # the cheap phenology Kc each call so leafout_GDD can vary per eval.
+            if getattr(self, '_chang_ET_cache', None) is None:
+                self._chang_ET_cache = np.asarray(
+                    self.evapotranspiration_Chang2019(), dtype=float)
+            return self._chang_ET_cache * self.phenology_Kc()
         raise ValueError('evapotranspiration_method must be "datafile" or '
                          '"ThornthwaiteChang2019".')
 
@@ -2112,17 +2115,12 @@ class Buckets(object):
 
         The result is stored as 'ET for model [mm/day]' in self.hydrodata.
         """
-        # The raw ET base (datafile column, or Thornthwaite from fixed
-        # temperatures) is independent of et_scale and the calibrated
-        # parameters, so cache it. compute_ET is re-run on every parameter
-        # evaluation, but the (expensive) Thornthwaite computation then happens
-        # only once per loaded forcing. The cache rides along on a deep copy of
-        # the Buckets, so a reused ScoringModel never recomputes it.
-        if getattr(self, '_raw_ET_cache', None) is not None:
-            _raw_ET = self._raw_ET_cache
-        else:
-            _raw_ET = self._demand_ET()
-        self._raw_ET_cache = _raw_ET
+        # The ET demand (datafile column, or Thornthwaite × phenology Kc). The
+        # expensive Thornthwaite reference ET is cached inside _demand_ET (it is
+        # parameter-independent and rides a reused ScoringModel's deep copy);
+        # the cheap Kc is reapplied here each call so a calibrated leafout_GDD
+        # takes effect. compute_ET is re-run on every parameter evaluation.
+        _raw_ET = self._demand_ET()
 
         if self.use_et_water_stress or (self.use_et_reservoir_draw and
                                          self.enforce_water_balance == 'none'):
