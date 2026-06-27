@@ -1755,7 +1755,7 @@ class Buckets(object):
             'base_temperature__C':  _phen.get('base_temperature__C', 5.0),
             'leafout_GDD':          _phen.get('leafout_GDD', 100.0),
             'full_canopy_GDD':      _phen.get('full_canopy_GDD', 400.0),
-            'dormant_Kc':           _phen.get('dormant_Kc', 0.4),
+            'dormant_Kc':           _phen.get('dormant_Kc', 0.5),
             'full_Kc':              _phen.get('full_Kc', 1.0),
             'senescence_start_doy': _phen.get('senescence_start_doy', 260),
             'senescence_end_doy':   _phen.get('senescence_end_doy', 305),
