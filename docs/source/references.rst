@@ -80,6 +80,23 @@ Model for Scandinavian Catchments.* SMHI Report RHO 7. Swedish
 Meteorological and Hydrological Institute, Norrköping.
 (Original HBV model; multi-component runoff cascade structure.)
 
+Moore, R. J. (1985). The probability-distributed principle and runoff
+production at point and basin scales.
+*Hydrological Sciences Journal*, 30(2), 273--297.
+https://doi.org/10.1080/02626668509490989
+(Source for the PDM saturation-excess runoff option,
+:math:`f_\text{sat} = 1 - e^{-H/H_0}`.)
+
+Recession Analysis
+~~~~~~~~~~~~~~~~~~
+
+Brutsaert, W., & Nieber, J. L. (1977). Regionalized drought flow hydrographs
+from a mature glaciated plateau.
+*Water Resources Research*, 13(3), 637--643.
+https://doi.org/10.1029/WR013i003p00637
+(Basis for the :class:`~mnished.BrutsaertNieber` recession analysis and the
+data-driven recession-exponent prior.)
+
 Channel Routing
 ~~~~~~~~~~~~~~~
 
