@@ -78,7 +78,7 @@ sub_catchments:
       sill_storage__mm:    250.0
       outflow_exponent:    1.6667     # 5/3, Manning wide-channel spillover
       gw_partner:          lake_basin_land
-      f_route_lake:        1.0        # fraction of zone-2 discharge sent through lake
+      f_route_lake:        0.4        # zone-2 fraction routed through lake (calibration start; overridden by params.yml)
     initial_conditions:
       lake_storage__mm:    600.0
 
