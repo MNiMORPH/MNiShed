@@ -10,13 +10,24 @@
 
 <!-- start-intro -->
 
-MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes precipitation through an optional snowpack stage and then through a cascade of one or more reservoirs (soil zone, groundwater, etc.), producing streamflow. Evapotranspiration is either read from a data file or computed with the Thornthwaite–Chang 2019 equation, and is scaled to close the long-run water balance. The model follows the [CSDMS Basic Model Interface (BMI)](https://csdms.colorado.edu/wiki/BMI).
+MNiShed is a lumped, daily-timestep conceptual hydrological model. It routes precipitation through an optional snowpack stage and then through a cascade of one or more reservoirs (soil zone, groundwater, etc.), producing streamflow. A basin can be split into parallel sub-catchments — including open-water lakes — to represent contrasting hydrologic zones. Evapotranspiration is either read from a data file or computed with the Thornthwaite–Chang 2019 equation, optionally reshaped by a growing-degree-day vegetation-phenology coefficient, and scaled to close the long-run water balance. The model follows the [CSDMS Basic Model Interface (BMI)](https://csdms.colorado.edu/wiki/BMI), and ships with a fast in-process calibration stack and post-fit diagnostics.
 
 <!-- end-intro -->
 
 ---
 
 [Read the full documentation on ReadTheDocs](https://mnished.readthedocs.io/)
+
+---
+
+## Features
+
+- **Process options** — snowpack (degree-day melt, rain-on-snow), frozen ground, a configurable reservoir cascade (power-law or linear recession), tile drainage (two formulations), PDM saturation-excess, and direct runoff.
+- **Parallel sub-catchments & lakes** — split a basin into zones with independent physics; open-water lake elements with a threshold stage–discharge outlet, direct precipitation minus evaporation, and a bidirectional lake↔groundwater exchange.
+- **Evapotranspiration** — measured or Thornthwaite–Chang, with an optional growing-degree-day vegetation-phenology coefficient and water-balance closure.
+- **Calibration** — fast in-process calibration (build-once `ScoringModel`, config-driven `Calibrator` with declarative parameter targets), multi-window/decadal objectives, and SPOTPY (SCE-UA, DREAM) or Dakota drivers.
+- **Analysis** — post-fit parameter-identifiability diagnostics (likelihood profiles, a curvature eigenspectrum, ridges), a seasonal mass-balance diagnostic, Brutsaert–Nieber recession analysis, and data-driven priors.
+- **Performance & interoperability** — an optional Numba JIT time loop (verified identical to pure Python) and a CSDMS BMI wrapper.
 
 ---
 
