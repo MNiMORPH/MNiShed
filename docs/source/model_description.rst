@@ -928,6 +928,25 @@ In both cases, the annual scaling factor is stored and applied to ensure that
    in :doc:`configuration`; prefer measured (``datafile``) ET where phenology and
    temperature are out of phase.
 
+**Accepting the phasing error vs. updating the ET mechanics.** Thornthwaite-Chang
+trades forcing parsimony — temperature is the only input — for phase accuracy, so
+a basin whose ET is decoupled from temperature inherits a *structural* seasonal
+residual. Because ``et_scale`` is an annual factor, it can only redistribute that
+bias between seasons, never remove it. The choice is therefore per-application:
+**accept** the residual when the target signal is insensitive to seasonal phase
+(annual yield, multi-decade trends, drought totals), recognizing the spring/fall
+mismatch as method rather than model error; **update** the ET mechanics when phase
+*is* the signal (freshet timing, low-flow recession, seasonal water balance) by
+supplying measured ET (``datafile``), a thermal-time (growing-degree-day)
+phenology factor derived from the temperature record itself, a phenology factor
+that follows observed green-up (e.g. NDVI), or an energy-based method once the
+necessary radiation, wind, and humidity forcings are available. The thermal-time
+option is the most parsimonious of these — it needs no forcing beyond the daily
+temperature already required, and suppresses early-season ET until accumulated
+warmth predicts leaf-out — while the energy-based option carries its own forcing
+and parameter burden and is not automatically better than a cheap prescribed
+phenology factor for a given basin.
+
 Reservoir-draw mode and temporal buffering
 ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^
 
