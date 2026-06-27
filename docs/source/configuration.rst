@@ -179,14 +179,10 @@ accumulated GDD (base ``base_temperature__C``, reset each calendar year) rise fr
 declines back to ``dormant_Kc`` over the day-of-year senescence window. The
 defaults give a mid-to-late-May leaf-out appropriate to north-central Minnesota;
 tune them to local phenology. Because GDD enters nonlinearly, the factor corrects
-seasonal *phasing* rather than being absorbed by the annual ``et_scale``.
-
-.. note::
-
-    The ``'water-year'`` water-balance multiplier is not yet phenology-aware, so
-    with it per-year closure becomes approximate; use
-    ``enforce_water_balance: 'global'`` (or ``et_scale`` / stress closure) for
-    exact annual balance together with phenology.
+seasonal *phasing* rather than being absorbed by the annual ``et_scale``. The
+water-balance correction (``'water-year'`` or ``'global'``) normalises against
+the phenology-adjusted demand, so the annual total is preserved exactly whichever
+closure you use.
 
 The ``general`` section
 ~~~~~~~~~~~~~~~~~~~~~~~
