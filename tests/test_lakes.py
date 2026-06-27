@@ -527,3 +527,53 @@ def test_f_route_lake_override_on_non_lake_raises(tmp_path):
         mnished.run_and_score(_route_cfg(tmp_path, 0.0),
                               sub_catchments=[{'f_route_lake': 0.5}, {}],
                               metric='KGE')
+
+
+# ---------------------------------------------------------------------------
+# Open-water evaporation is phenology-free
+# ---------------------------------------------------------------------------
+
+def test_lake_open_water_evaporation_ignores_phenology(tmp_path):
+    """Open water has no leaf phenology: a lake's evaporation must use the
+    demand WITHOUT the vegetation Kc (= land ET / Kc), so in spring (Kc < 1) the
+    lake evaporates more than the phenology-suppressed land ET."""
+    cfg = _base_cfg()
+    cfg['catchment']['evapotranspiration_method'] = 'ThornthwaiteChang2019'
+    cfg['phenology'] = {'enabled': True}
+    cfg['sub_catchments'] = [_land(0.6), _lake(0.4, gw_partner='upland')]
+    b = mnished.Buckets()
+    b.initialize(_write(tmp_path, cfg))
+    land = _num(b.hydrodata, 'ET for model [mm/day]')
+    openw = _num(b.hydrodata, 'ET for model (open water) [mm/day]')
+    Kc = np.asarray(b.phenology_Kc())
+    assert np.allclose(openw, land / np.where(Kc > 0, Kc, 1.0), equal_nan=True)
+    apr = b.hydrodata['Date'].dt.month.to_numpy() == 4
+    assert np.nanmean(openw[apr]) > np.nanmean(land[apr])    # not leaf-out-suppressed
+
+
+def test_lake_phenology_jit_matches_pure_python(tmp_path):
+    """The phenology-free open-water ET reaches the JIT lake pass too, so JIT and
+    pure Python agree with phenology + a lake (the new ET_open_arr path)."""
+    pytest.importorskip("numba", exc_type=ImportError)
+    import mnished.mnished as _m
+    cfg = _base_cfg()
+    cfg['catchment']['evapotranspiration_method'] = 'ThornthwaiteChang2019'
+    cfg['phenology'] = {'enabled': True}
+    cfg['sub_catchments'] = [_land(0.6),
+                             _lake(0.4, gw_partner='upland', f_route_lake=0.4)]
+    path = _write(tmp_path, cfg)
+
+    def run(jit):
+        orig = _m._numba_available
+        _m._numba_available = jit
+        try:
+            b = mnished.Buckets()
+            b.initialize(path)
+            b.run()
+        finally:
+            _m._numba_available = orig
+        return _num(b.hydrodata, 'Specific Discharge (modeled) [mm/day]')
+
+    qj, qp = run(True), run(False)
+    m = np.isfinite(qj)
+    assert np.allclose(qj[m], qp[m], atol=1e-12)
