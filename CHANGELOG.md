@@ -48,6 +48,17 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   demand so the water-balance correction preserves the annual total; supported on
   the pure-Python and JIT loops (verified identical).
 
+- `SeasonalMassBalance` diagnostic (`mnished.diagnostics`): a per-season
+  water-balance decomposition (P, ET, storage change, discharge) with discharge
+  **split by source** — fast/event, slow/baseflow, and lake outlet — against
+  observed discharge, plus a monthly snowpack/ET climatology for melt timing. It
+  separates an ET-phasing error from a routing, storage, or recession error
+  (the decomposition that, on the Crow Wing River, reframed a suspected
+  lake-routing problem as a Thornthwaite spring-ET phasing issue). Backed by a new
+  `run(store_fluxes=True)` / `run_and_score(..., store_fluxes=True)` recording
+  mode whose three source columns sum exactly to the modeled discharge
+  (MNiMORPH/MNiShed#25).
+
 ### Fixed
 
 - Water-year ET scaling now normalises against the actual ET demand that is
