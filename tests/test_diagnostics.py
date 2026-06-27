@@ -153,3 +153,17 @@ def test_run_and_score_passthrough(tmp_path):
                         metric="KGE", store_fluxes=True)
     smb = SeasonalMassBalance(res.buckets)
     assert "DJF" in smb.report()
+
+
+def test_partition_closes_with_phenology(tmp_path):
+    """The fast/slow/lake partition is an exact partition of modeled Q even when
+    phenology reshapes the ET demand (the split is ET-method-independent)."""
+    cfg = _flat_cfg()
+    cfg["catchment"]["evapotranspiration_method"] = "ThornthwaiteChang2019"
+    cfg["phenology"] = {"enabled": True}
+    b = _run(cfg, "global")
+    hd = b.hydrodata
+    mod = hd["Specific Discharge (modeled) [mm/day]"].to_numpy(dtype=float)
+    parts = sum(hd[c].to_numpy(dtype=float) for c in FLUX)
+    m = np.isfinite(mod)
+    assert np.allclose(parts[m], mod[m], atol=1e-9)

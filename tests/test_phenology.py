@@ -173,3 +173,18 @@ def test_leafout_GDD_ignored_without_phenology(tmp_path):
                                     metric="KGE", leafout_GDD=200).score
     assert got == base
     assert any("leafout_GDD" in str(w.message) for w in caught)
+
+
+def test_phenology_with_et_reservoir_draw(tmp_path):
+    """Phenology composes with et_reservoir_draw + none/et_scale closure — the
+    mode the Crow Wing calibration uses — and leafout_GDD still moves the fit."""
+    cfg = _cfg(et="ThornthwaiteChang2019", phenology={"enabled": True})
+    cfg["modules"]["et_reservoir_draw"] = True
+    et, _ = _et_series(tmp_path, cfg, wb="none")
+    assert np.isfinite(et).any()
+    path = _write(tmp_path, cfg, "rdraw")
+    a = mnished.run_and_score(path, enforce_water_balance="none", metric="KGE",
+                              leafout_GDD=70).score
+    b = mnished.run_and_score(path, enforce_water_balance="none", metric="KGE",
+                              leafout_GDD=260).score
+    assert a != b
