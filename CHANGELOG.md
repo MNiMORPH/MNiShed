@@ -46,7 +46,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   rather than being absorbed by the annual `et_scale`, so it stops temperature-
   index ET from evaporating the snowmelt freshet before leaf-out. Applied to the
   demand so the water-balance correction preserves the annual total; supported on
-  the pure-Python and JIT loops (verified identical).
+  the pure-Python and JIT loops (verified identical). Of the curve's parameters,
+  only `leafout_GDD` (green-up timing) is exposed as a calibration target
+  (`run_and_score(leafout_GDD=...)` / `target: leafout_GDD`) — the rest are fixed
+  from priors to avoid degeneracy (`full_Kc`/magnitude with `et_scale`,
+  `base_temperature__C` with the threshold). Validated on the Crow Wing River
+  (best multi-decade KGE_logKGE 0.740, every season improved); the senescence
+  window is an active autumn-discharge lever, and `dormant_Kc` defaults to 0.5.
 
 - `SeasonalMassBalance` diagnostic (`mnished.diagnostics`): a per-season
   water-balance decomposition (P, ET, storage change, discharge) with discharge
