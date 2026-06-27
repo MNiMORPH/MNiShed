@@ -85,6 +85,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `base_temperature__C` with the threshold). Validated on the Crow Wing River
   (best multi-decade KGE_logKGE 0.740, every season improved); the senescence
   window is an active autumn-discharge lever, and `dormant_Kc` defaults to 0.5.
+  `Kc` applies to land ET only — lake open-water evaporation is phenology-free
+  (open water has no leaf phenology).
 
 - `SeasonalMassBalance` diagnostic (`mnished.diagnostics`): a per-season
   water-balance decomposition (P, ET, storage change, discharge) with discharge
