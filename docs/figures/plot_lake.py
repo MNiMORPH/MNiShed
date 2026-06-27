@@ -22,6 +22,7 @@ import pandas as pd
 import yaml
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mnished import Buckets  # noqa: E402
@@ -86,6 +87,8 @@ def main():
     ax2.tick_params(axis="y", labelcolor="#1f6fb2")
     ax.set_title("Lake store-and-release: stage above sill drives the outlet",
                  fontsize=10)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig.savefig(OUT, dpi=130, bbox_inches="tight")
     print(f"wrote {os.path.relpath(OUT, ROOT)}")
 

@@ -21,6 +21,7 @@ import numpy as np
 import pandas as pd
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mnished import HydrographSeparation  # noqa: E402
@@ -54,6 +55,8 @@ def main():
     ax.set_title("Hydrograph separation into timescale components (Cannon)",
                  fontsize=10)
     ax.legend(fontsize=7.5, loc="upper right", framealpha=0.9)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig.savefig(OUT, dpi=130, bbox_inches="tight")
     print(f"wrote {os.path.relpath(OUT, ROOT)}  (tau_fast {tau_fast:.1f} d)")
 

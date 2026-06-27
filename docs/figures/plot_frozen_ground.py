@@ -21,6 +21,7 @@ import pandas as pd
 import yaml
 
 matplotlib.use("Agg")
+import matplotlib.dates as mdates  # noqa: E402
 import matplotlib.pyplot as plt  # noqa: E402
 
 from mnished import Buckets  # noqa: E402
@@ -71,6 +72,8 @@ def main():
     ax.set_title("Frozen ground sharpens the spring freshet (Cannon)",
                  fontsize=10)
     ax.legend(fontsize=8)
+    ax.xaxis.set_major_locator(mdates.YearLocator())
+    ax.xaxis.set_major_formatter(mdates.DateFormatter("%Y"))
     fig.savefig(OUT, dpi=130, bbox_inches="tight")
     print(f"wrote {os.path.relpath(OUT, ROOT)}")
 
