@@ -1338,6 +1338,14 @@ class Buckets(object):
         """
         return [reservoir.Hwater for reservoir in self.reservoirs]
 
+    # Per-source discharge partition columns (``store_fluxes=True``); these
+    # three sum to 'Specific Discharge (modeled) [mm/day]'. "fast" is the
+    # shallow/event response (top reservoir + direct/tile/multipath), "slow" the
+    # deeper baseflow reservoirs, "lake" the lake-outlet contribution.
+    _FLUX_PARTITION_COLUMNS = ('Discharge: fast [mm/day]',
+                               'Discharge: slow [mm/day]',
+                               'Discharge: lake [mm/day]')
+
     def _depth_column_names(self):
         """
         Column names for per-reservoir stored depths (``store_depths=True``),
@@ -1850,6 +1858,7 @@ class Buckets(object):
         self.hydrodata['Snowpack (modeled) [mm SWE]'] = pd.NA
         self.hydrodata['Subsurface storage (modeled total) [mm]'] = pd.NA
         self._store_depths = False
+        self._store_fluxes = False
 
         # Start out at first timestep
         # Could modify this to pick up a run in the middle
@@ -2631,6 +2640,7 @@ class Buckets(object):
         flux_direct    = 0.0
         flux_tile      = 0.0
         flux_multipath = 0.0
+        q_fast = q_slow = q_lake = 0.0   # per-source partition (store_fluxes)
 
         # Two passes so a lake can receive its partner land zone's *current*
         # step discharge (channelized routing) within the same day. Pass 1
@@ -2649,6 +2659,14 @@ class Buckets(object):
             # The fraction of this zone's discharge routed into lakes does not
             # reach the gauge directly; the lakes release it via their outlets.
             qi             += a * qi_sc * (1.0 - sc._routed_away_fraction)
+            if self._store_fluxes:
+                # Deeper reservoirs are the slow (baseflow) store; the rest of
+                # the zone's discharge — top reservoir plus direct/tile/multipath
+                # — is the fast response. fast + slow = qi_sc exactly.
+                _slow = sum(r.H_discharge for r in sc.reservoirs[1:])
+                _w = a * (1.0 - sc._routed_away_fraction)
+                q_slow += _w * _slow
+                q_fast += _w * (qi_sc - _slow)
             if self.has_snowpack and sc.snowpack is not None:
                 swe        += a * sc.snowpack.Hwater
             storage        += a * self._sub_catchment_storage(sc)
@@ -2667,8 +2685,11 @@ class Buckets(object):
                 routed_in = (sc.f_route_lake
                              * sc.gw_partner.area_fraction / a
                              * _land_qi[id(sc.gw_partner)])
-            qi      += a * self._advance_lake(time_step, sc, routed_in)
+            _lake_out = self._advance_lake(time_step, sc, routed_in)
+            qi      += a * _lake_out
             storage += a * self._sub_catchment_storage(sc)
+            if self._store_fluxes:
+                q_lake += a * _lake_out
 
         # Record per-step flux-partition components (mm/day) for diagnostics
         # and BMI coupling.  These are already reflected in the total
@@ -2685,6 +2706,10 @@ class Buckets(object):
         if self._store_depths:
             for _res, _col in zip(self.reservoirs, self._depth_column_names()):
                 self.hydrodata.at[time_step, _col] = _res.Hwater
+        if self._store_fluxes:
+            for _col, _val in zip(self._FLUX_PARTITION_COLUMNS,
+                                  (q_fast, q_slow, q_lake)):
+                self.hydrodata.at[time_step, _col] = _val
 
     def evapotranspiration_Chang2019(self, Tmax=None, Tmin=None, photoperiod=None,
                                     k=0.69):
@@ -2732,7 +2757,7 @@ class Buckets(object):
                                     0.)))
         return ET0
 
-    def run(self, start=None, end=None, store_depths=False):
+    def run(self, start=None, end=None, store_depths=False, store_fluxes=False):
         """
         Advance the model through time steps in self.hydrodata.
 
@@ -2781,11 +2806,21 @@ class Buckets(object):
             for _col in self._depth_column_names():
                 self.hydrodata[_col] = pd.NA
 
+        # Per-source discharge partition (fast / slow / lake) for the seasonal
+        # mass-balance diagnostic. Recorded in the pure-Python update() loop, so
+        # store_fluxes forces that path (the diagnostic is post-calibration, not
+        # a hot-loop concern). The three columns sum to the modeled discharge.
+        self._store_fluxes = store_fluxes
+        if store_fluxes:
+            for _col in self._FLUX_PARTITION_COLUMNS:
+                self.hydrodata[_col] = pd.NA
+
         # JIT path: available whenever numba imported successfully. PDM
         # (pdm_H0), et_water_stress, and lake elements (direct P-E + threshold
         # outlet + bidirectional Q_gw exchange) are all supported by the
-        # compiled loop.
-        _can_jit = _numba_available
+        # compiled loop. store_fluxes needs the Python loop's per-source
+        # recording, so it disables the JIT for this run.
+        _can_jit = _numba_available and not store_fluxes
 
         # Surface a slow pure-Python fallback once, so it is not silent — but
         # only for an installed-but-broken numba; a plain "numba not installed"
