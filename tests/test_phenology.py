@@ -131,3 +131,45 @@ def test_phenology_runs_under_scalar_closure(tmp_path, wb):
     """Phenology composes with global and none/et_scale closure without error."""
     et, _ = _et_series(tmp_path, _cfg(phenology={"enabled": True}), wb=wb)
     assert np.isfinite(et).any()
+
+
+def test_dormant_Kc_default_is_half(tmp_path):
+    """The Crow-Wing-tuned default avoids winter over-production."""
+    cfg = _cfg(et="ThornthwaiteChang2019", phenology={"enabled": True})
+    p = tmp_path / "cfg.yml"
+    p.write_text(yaml.safe_dump(cfg))
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = Buckets()
+        b.initialize(str(p), enforce_water_balance="global")
+    assert b.phenology_params["dormant_Kc"] == 0.5
+
+
+def test_leafout_GDD_is_a_calibration_target(tmp_path):
+    """leafout_GDD is overridable per evaluation (the one calibratable knob),
+    and ScoringModel's build-once path matches run_and_score bit-for-bit — so
+    the Thornthwaite cache / Kc-recompute split is correct."""
+    from mnished import ScoringModel
+    cfg = _cfg(et="ThornthwaiteChang2019", phenology={"enabled": True})
+    path = _write(tmp_path, cfg, "ph")
+    early = mnished.run_and_score(path, enforce_water_balance="global",
+                                  metric="KGE", leafout_GDD=80).score
+    late = mnished.run_and_score(path, enforce_water_balance="global",
+                                 metric="KGE", leafout_GDD=320).score
+    assert early != late                                  # the knob moves the fit
+    sm = ScoringModel(path, enforce_water_balance="global")
+    assert sm.score(metric="KGE", leafout_GDD=80).score == early
+    assert sm.score(metric="KGE", leafout_GDD=320).score == late
+
+
+def test_leafout_GDD_ignored_without_phenology(tmp_path):
+    """leafout_GDD with phenology disabled warns and has no effect."""
+    path = _write(tmp_path, _cfg(et="ThornthwaiteChang2019"), "noph")
+    base = mnished.run_and_score(path, enforce_water_balance="global",
+                                 metric="KGE").score
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        got = mnished.run_and_score(path, enforce_water_balance="global",
+                                    metric="KGE", leafout_GDD=200).score
+    assert got == base
+    assert any("leafout_GDD" in str(w.message) for w in caught)
