@@ -149,6 +149,45 @@ Example:
         water_year_start_month: 10
         baseflow_Q: 0.0   # disabled; set > 0 for regional groundwater import
 
+Vegetation phenology (optional)
+~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~~
+
+An optional ``phenology`` block applies a growing-degree-day (GDD) vegetation
+coefficient (:math:`K_c`) to the ``ThornthwaiteChang2019`` ET demand, correcting
+the temperature–phenology phasing described in the warning above. It suppresses
+early-spring ET until accumulated warmth predicts leaf-out, then lets the
+water-balance / ``et_scale`` correction re-close the annual total — reshaping the
+seasonal ET cycle without changing the annual amount. It is **off by default**,
+and is ignored for ``evapotranspiration_method: datafile`` (measured ET already
+reflects the canopy).
+
+.. code-block:: yaml
+
+    phenology:
+        enabled: true
+        base_temperature__C:  5.0    # GDD base temperature
+        leafout_GDD:          100.0  # cumulative GDD (reset each calendar year) at green-up
+        full_canopy_GDD:      400.0  # cumulative GDD at full canopy
+        dormant_Kc:           0.4    # ET coefficient outside the growing season
+        full_Kc:              1.0    # ET coefficient at full canopy
+        senescence_start_doy: 260    # day-of-year senescence begins (~mid-Sep)
+        senescence_end_doy:   305    # day-of-year fully dormant (~early Nov)
+
+:math:`K_c` holds at ``dormant_Kc`` through winter and early spring, ramps up as
+accumulated GDD (base ``base_temperature__C``, reset each calendar year) rise from
+``leafout_GDD`` to ``full_canopy_GDD``, holds at ``full_Kc`` through summer, then
+declines back to ``dormant_Kc`` over the day-of-year senescence window. The
+defaults give a mid-to-late-May leaf-out appropriate to north-central Minnesota;
+tune them to local phenology. Because GDD enters nonlinearly, the factor corrects
+seasonal *phasing* rather than being absorbed by the annual ``et_scale``.
+
+.. note::
+
+    The ``'water-year'`` water-balance multiplier is not yet phenology-aware, so
+    with it per-year closure becomes approximate; use
+    ``enforce_water_balance: 'global'`` (or ``et_scale`` / stress closure) for
+    exact annual balance together with phenology.
+
 The ``general`` section
 ~~~~~~~~~~~~~~~~~~~~~~~
 
