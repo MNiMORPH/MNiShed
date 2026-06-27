@@ -42,6 +42,8 @@ driver:
     end: '1970-12-31'
   - start: '1971-01-01'
     end: '1980-12-31'
+  # 1981-1990 is omitted: observed discharge is almost entirely missing that
+  # decade (~8% of days present, vs 93-100% for the windows used).
   - start: '1991-01-01'
     end: '2000-12-31'
   - start: '2001-01-01'
