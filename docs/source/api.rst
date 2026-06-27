@@ -79,3 +79,57 @@ reservoir-timescale components.
    :members: fit, get_initial_conditions, get_parameter_priors, summary
    :member-order: bysource
    :show-inheritance:
+
+In-process calibration
+----------------------
+
+Build-once / score-many and declarative, config-driven calibration; see
+:doc:`calibration` for the workflow.
+
+.. autoclass:: mnished.ScoringModel
+   :members:
+   :show-inheritance:
+
+.. autoclass:: mnished.Calibrator
+   :members:
+   :show-inheritance:
+
+.. autofunction:: mnished.target_kwargs
+
+.. autofunction:: mnished.log_flow_residual_terms
+
+Diagnostics
+-----------
+
+Post-calibration diagnostics.
+
+.. autoclass:: mnished.SeasonalMassBalance
+   :members:
+   :show-inheritance:
+
+Identifiability
+---------------
+
+Post-fit parameter-identifiability diagnostics: per-parameter likelihood
+profiles, a curvature eigenspectrum (stiff vs. degenerate parameter
+combinations), and 2-D ridge maps.  See :doc:`calibration`.
+
+.. autoclass:: mnished.IdentifiabilityReport
+   :members:
+   :show-inheritance:
+
+.. autoclass:: mnished.ParameterSet
+   :members:
+   :show-inheritance:
+
+.. autoclass:: mnished.Parameter
+   :members:
+   :show-inheritance:
+
+.. autofunction:: mnished.profile
+
+.. autofunction:: mnished.profile_all
+
+.. autofunction:: mnished.eigenspectrum
+
+.. autofunction:: mnished.ridge
