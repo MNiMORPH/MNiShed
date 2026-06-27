@@ -7,6 +7,7 @@ from .calibration import (
     run_and_score,
     target_kwargs,
 )
+from .diagnostics import SeasonalMassBalance
 from .hydrograph_separation import HydrographSeparation
 from .identifiability import (
     IdentifiabilityReport,
@@ -32,6 +33,7 @@ __all__ = [
     "Calibrator",
     "target_kwargs",
     "log_flow_residual_terms",
+    "SeasonalMassBalance",
     "HydrographSeparation",
     "BrutsaertNieber",
     "suggest_priors",
