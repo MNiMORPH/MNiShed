@@ -136,6 +136,71 @@ bound. **Validation target: KGE recovers *while* those substrate timescales rela
 back toward till-basin values** — proof the lake does the right physical work
 rather than merely adding flexibility.
 
+### Storage↔stage: a path to a *derived* (not calibrated) lake recession coefficient (2026-06-26 session)
+
+*A refinement of the committed design. The parameter table above lists the lake
+outflow coefficient `a` (≡ `1/τ_lake`) as **calibrated** — a lumped effective
+coefficient absorbing hydraulics × storage→stage × storage→area. This section
+shows how, with a little outlet data, it can instead be **derived from field
+measurements** and removed from the calibration: the lake-specific realization of
+the model's aim — maximum use of basic field data, minimum free parameters.*
+
+**Key fact: above the sill, the storage term is a real water-layer thickness.**
+Every flux that moves `H_lake` enters as a real water volume expressed as a depth
+over the lake area — direct `P` and `E` on the surface, plus the volume-conserving
+routed inflow `f_route·(a_land/a_lake)·Q_land` and groundwater exchange
+`dH_lake = dH_land·(a_land/a_lake)`. `recharge()` adds them with **no porosity
+factor** (open water has specific yield 1) and no area factor, so `H_lake` is a
+genuine volume-per-lake-area. **If the lake surface area is taken constant above
+the sill, then `H_eff = max(H_lake − H_sill, 0)` is the literal thickness of water
+standing above the spill point** — not a conceptual storage on a stretched scale.
+The storage→stage factor α that `a` and `H_sill` otherwise absorb **collapses to
+exactly 1 above the sill**, leaving `a` as the pure hydraulics of the outlet.
+
+**Conceptual below the sill, real above it.** The *absolute* dead-pool depth (the
+value of `H_sill`, i.e. where the lake bottom sits) stays conceptual — we have no
+bathymetry — but it cancels in `H_eff` and never enters the outflow law; only
+`H_eff` does. The sill is a physically meaningful datum (the outlet/spill
+elevation), so the active layer is a real thickness measured from a real
+reference. The dead pool remains a lumped capacitor (where we lack data); the
+spilling layer becomes physical (where we can get it).
+
+**Payoff — `τ_lake` as a derived quantity.** With `H_eff` a real depth and the
+outlet a wide-channel Manning control (`b = 5/3`, already fixed), matching the
+model's per-lake-area decline `dH/dt = −H_eff^{5/3} / τ_lake` [mm, day] to the
+physical rating `Q_vol = (1/n)·W·S^{1/2}·H_eff^{5/3}` gives (factor
+864 = 86400 / 1000^{2/3} converts mm/day ↔ m/s for a 5/3 law):
+
+```
+1/τ_lake = 864 · W·√S / (n · A_lake)      [W, A_lake in m, m²; H_eff in mm]
+```
+
+Every term on the right is a measurement: outlet width `W`, slope `S`, Manning `n`
+(prior), and lake surface area `A_lake` (NHD / inventory). So **given outlet
+geometry, the lake recession coefficient is computed, not calibrated** —
+collapsing the two calibrated lake parameters toward one (sill / dead-pool only),
+in the same spirit that `b`, open-water ET, and the lake↔GW conductance were
+already fixed or eliminated. `W` and `S` are plausibly resolvable from remotely
+sensed channel data — the same body of work as the lake-network structure /
+GRASS-fluvial-profiler prior factory.
+
+**Assumption to honor: constant area above the sill.** This is exactly what makes
+`H_eff` a thickness (volume = thickness × constant area). It is accurate for small
+stage fluctuations — the linear storage–stage limit; the error is purely the
+hypsometric spreading of the lake surface during large spill events, a bounded,
+second-order term for the seasonal signal. (`H_eff` is a thickness over the
+*model's* lake area, so it equals the true field thickness only insofar as
+`area_fraction` matches the true open-water area.)
+
+**Sanity check (Crow Wing, 2001–2010).** Inverting the relation for the calibrated
+`τ_lake ≈ 25,400` with the NHD lake area (0.30 × 2334.8 km²) and plausible
+`n = 0.03–0.05`, `S = 10⁻⁴–10⁻²` gives an implied outlet width ~10–160 m (≈40 m at
+`S = 10⁻³`, `n = 0.04`), overlapping the ~10–55 m expected from downstream
+hydraulic geometry for the river's ~12 m³/s mean discharge. The calibrated value
+corresponds to a sane outlet (effective lake residence ~1–1.5 yr) — evidence the
+lumped coefficient is physically defensible and a good candidate for replacement
+by a derived one.
+
 ---
 
 ## Why lakes are different from land
