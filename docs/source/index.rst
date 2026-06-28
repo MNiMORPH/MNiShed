@@ -57,6 +57,7 @@ Ideal for long water-balance studies, climate impact assessments, and ungauged b
    :caption: Reference
 
    api
+   input_contract
    calibration
    recession_analysis
    priors
