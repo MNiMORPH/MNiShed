@@ -13,6 +13,7 @@ import os
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
@@ -167,3 +168,37 @@ def test_partition_closes_with_phenology(tmp_path):
     parts = sum(hd[c].to_numpy(dtype=float) for c in FLUX)
     m = np.isfinite(mod)
     assert np.allclose(parts[m], mod[m], atol=1e-9)
+
+
+def test_seasonal_et_includes_lake_evaporation(tmp_path):
+    """The diagnostic's ET term is area-weighted to include lake open-water
+    evaporation, so for a phenology + lake basin it differs from the land ET."""
+    cfg = _lake_cfg()
+    cfg["catchment"]["evapotranspiration_method"] = "ThornthwaiteChang2019"
+    cfg["phenology"] = {"enabled": True}
+    b = _run(cfg, "none")
+    smb = SeasonalMassBalance(b)
+    hd = b.hydrodata
+    land = pd.to_numeric(hd["ET for model [mm/day]"], errors="coerce").to_numpy()
+    ow = pd.to_numeric(hd["ET for model (open water) [mm/day]"],
+                       errors="coerce").to_numpy()
+    lake_frac = sum(sc.area_fraction for sc in b.sub_catchments
+                    if sc.kind == "lake")
+    expect = (1 - lake_frac) * land + lake_frac * ow
+    # the diagnostic ET (over its scored rows) matches the area-weighted basin ET
+    et_diag = smb.df["ET"].to_numpy()
+    expect_scored = expect[hd["Specific Discharge (modeled) [mm/day]"].notna()]
+    assert np.allclose(et_diag, expect_scored, equal_nan=True)
+    assert not np.allclose(et_diag, land[hd["Specific Discharge (modeled) [mm/day]"].notna()],
+                           equal_nan=True)   # lake E actually shifts it
+
+
+def test_store_fluxes_routing_warns(tmp_path):
+    """store_fluxes + Nash routing warns that the partition is pre-routing."""
+    p = tmp_path / "cfg.yml"
+    p.write_text(yaml.safe_dump(_flat_cfg()))
+    with warnings.catch_warnings(record=True) as caught:
+        warnings.simplefilter("always")
+        run_and_score(str(p), enforce_water_balance="water-year", metric="KGE",
+                      store_fluxes=True, routing_K=10.0)
+    assert any("before Nash routing" in str(w.message) for w in caught)

@@ -1204,6 +1204,18 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         q_mod = q_mod + b.baseflow_Q
     b.hydrodata['Specific Discharge (modeled) [mm/day]'] = q_mod
 
+    # The store_fluxes per-source partition (fast/slow/lake) is recorded during
+    # the run, before Nash routing and baseflow_Q are applied here, so it sums to
+    # the *unrouted* discharge. Warn rather than silently let a SeasonalMassBalance
+    # decomposition disagree with the routed 'Specific Discharge (modeled)'.
+    if store_fluxes and (routing_K is not None or b.baseflow_Q != 0.0):
+        warnings.warn(
+            "store_fluxes per-source partition is recorded before Nash routing / "
+            "baseflow_Q, so fast+slow+lake sums to the unrouted discharge, not the "
+            "routed 'Specific Discharge (modeled)'. For an exact source "
+            "decomposition use store_fluxes without routing_K / baseflow_Q.",
+            UserWarning, stacklevel=2)
+
     # --- Mask to scoring window ---
     q_obs = b.hydrodata['Specific Discharge [mm/day]']
 

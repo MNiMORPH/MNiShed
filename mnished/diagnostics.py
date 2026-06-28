@@ -66,10 +66,19 @@ class SeasonalMassBalance:
 
         swe = num('Snowpack (modeled) [mm SWE]', 0.0)
         storage = num('Subsurface storage (modeled total) [mm]', np.nan) + swe
+        # Basin-mean ET, area-weighted to include lake open-water evaporation:
+        # land zones use the land ET demand, lakes the phenology-free open-water
+        # column (= land ET when no phenology, so non-lake basins are unchanged).
+        lake_frac = sum(sc.area_fraction for sc in buckets.sub_catchments
+                        if getattr(sc, 'kind', 'land') == 'lake')
+        land_et = num('ET for model [mm/day]')
+        _ow = 'ET for model (open water) [mm/day]'
+        lake_et = num(_ow) if _ow in hd.columns else land_et
+        et = (1.0 - lake_frac) * land_et + lake_frac * lake_et
         df = pd.DataFrame({
             'date': pd.to_datetime(hd['Date']),
             'P':    num('Precipitation [mm/day]'),
-            'ET':   num('ET for model [mm/day]'),
+            'ET':   et,
             'obs':  num('Specific Discharge [mm/day]'),
             'mod':  num('Specific Discharge (modeled) [mm/day]'),
             'fast': num(self._FLUX[0]),
