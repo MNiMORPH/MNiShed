@@ -2127,9 +2127,9 @@ class Buckets(object):
                                          self.enforce_water_balance == 'none'):
             # In stress modes, et_scale is the sole WB-closure mechanism;
             # no mode-specific multiplier is applied before it.
-            _et_mode = np.asarray(_raw_ET)
+            _mult = 1.0
         elif self.enforce_water_balance == 'global':
-            _et_mode = np.asarray(_raw_ET) * self.global_et_multiplier
+            _mult = self.global_et_multiplier
         elif self.enforce_water_balance == 'water-year':
             # Merge per-water-year multiplier into hydrodata, then apply.
             # Drop any previous 'ET multiplier' column first so that calling
@@ -2154,28 +2154,29 @@ class Buckets(object):
                 )
                 self.hydrodata['ET multiplier'] = (
                     self.hydrodata['ET multiplier'].fillna(1.0))
-            _et_mode = np.asarray(_raw_ET) * self.hydrodata['ET multiplier'].to_numpy()
+            _mult = self.hydrodata['ET multiplier'].to_numpy()
         else:
-            _et_mode = np.asarray(_raw_ET)
+            _mult = 1.0
 
         # et_scale (default 1.0) is a universal calibration multiplier applied
         # after the mode-specific water-balance correction.  Under stress modes
         # it is the sole correction (mode factor = raw ET); under other modes it
         # provides an additional degree of freedom — e.g. for decade-specific
         # land-cover or climate sensitivity — at the cost of exact WB closure.
-        self.hydrodata['ET for model [mm/day]'] = _et_mode * self.et_scale
+        self.hydrodata['ET for model [mm/day]'] = (
+            np.asarray(_raw_ET) * _mult * self.et_scale)
 
-        # Open-water evaporation for lake elements: the same demand WITHOUT the
-        # vegetation phenology coefficient (open water has no leaf phenology), so
-        # `ET for model` / Kc — keeping the water-balance multiplier and et_scale.
-        # Only stored when phenology is on; otherwise lakes read `ET for model`
-        # directly (Kc = 1, identical). (Lake ice, the real seasonal control on
-        # open-water E, is not modeled.)
-        if self.use_phenology:
-            _Kc = self.phenology_Kc()
+        # Open-water evaporation for lake elements: the phenology-free Thornthwaite
+        # demand run through the SAME water-balance multiplier and et_scale (open
+        # water has no leaf phenology). Computed directly from the cached reference
+        # ET — not by dividing Kc back out of 'ET for model' — so it is correct even
+        # where Kc -> 0, and only in Thornthwaite mode (datafile ET never carried
+        # Kc, so lakes read 'ET for model' directly there; phenology with datafile
+        # ET is ignored, per the initialize() warning). Lake ice, the real seasonal
+        # control on open-water E, is not modeled.
+        if self.use_phenology and self.et_method == 'ThornthwaiteChang2019':
             self.hydrodata['ET for model (open water) [mm/day]'] = (
-                self.hydrodata['ET for model [mm/day]'].to_numpy()
-                / np.where(_Kc > 0, _Kc, 1.0))
+                np.asarray(self._chang_ET_cache) * _mult * self.et_scale)
 
     def _et_stress_factor(self, sub_catchment):
         """
@@ -2532,8 +2533,8 @@ class Buckets(object):
         # water-balance multiplier) but WITHOUT the vegetation phenology Kc —
         # open water has no leaf phenology. No soil-moisture water-stress factor
         # either, because open water is not moisture-limited.
-        _et_col = ('ET for model (open water) [mm/day]' if self.use_phenology
-                   else 'ET for model [mm/day]')
+        _owcol = 'ET for model (open water) [mm/day]'
+        _et_col = _owcol if _owcol in self.hydrodata.columns else 'ET for model [mm/day]'
         E = self.hydrodata[_et_col][time_step]
         res.recharge(P - E + routed_inflow)
         res.discharge(self.dt)
@@ -2909,7 +2910,7 @@ class Buckets(object):
                 _hd['Precipitation [mm/day]'].to_numpy(dtype=np.float64),
                 _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64),
                 (_hd['ET for model (open water) [mm/day]'].to_numpy(dtype=np.float64)
-                 if self.use_phenology
+                 if 'ET for model (open water) [mm/day]' in _hd.columns
                  else _hd['ET for model [mm/day]'].to_numpy(dtype=np.float64)),
                 _T, _Tmin, _Tmax,
                 _sc_start, _sc_end, _sc_area,

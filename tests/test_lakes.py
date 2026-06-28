@@ -577,3 +577,35 @@ def test_lake_phenology_jit_matches_pure_python(tmp_path):
     qj, qp = run(True), run(False)
     m = np.isfinite(qj)
     assert np.allclose(qj[m], qp[m], atol=1e-12)
+
+
+def test_lake_open_water_phenology_datafile_is_ignored(tmp_path):
+    """datafile ET + phenology + a lake must not build or read an open-water
+    column (datafile ET never carried Kc); it runs cleanly with the lake reading
+    'ET for model' directly."""
+    cfg = _base_cfg()
+    cfg['catchment']['evapotranspiration_method'] = 'datafile'
+    cfg['phenology'] = {'enabled': True}
+    cfg['sub_catchments'] = [_land(0.6), _lake(0.4, gw_partner='upland')]
+    b = mnished.Buckets()
+    b.initialize(_write(tmp_path, cfg))
+    b.run()
+    assert 'ET for model (open water) [mm/day]' not in b.hydrodata.columns
+    assert np.isfinite(_num(b.hydrodata, 'Specific Discharge (modeled) [mm/day]')).any()
+
+
+def test_lake_open_water_correct_when_dormant_Kc_zero(tmp_path):
+    """With dormant_Kc = 0, open-water E is computed directly (not by dividing Kc
+    out), so it stays at the phenology-free potential rather than collapsing to 0
+    in the dormant season."""
+    cfg = _base_cfg()
+    cfg['catchment']['evapotranspiration_method'] = 'ThornthwaiteChang2019'
+    cfg['phenology'] = {'enabled': True, 'dormant_Kc': 0.0}
+    cfg['sub_catchments'] = [_land(0.6), _lake(0.4, gw_partner='upland')]
+    b = mnished.Buckets()
+    b.initialize(_write(tmp_path, cfg))
+    ow = _num(b.hydrodata, 'ET for model (open water) [mm/day]')
+    chang = np.asarray(b.evapotranspiration_Chang2019(), dtype=float)
+    assert np.allclose(ow, chang * b.et_scale, equal_nan=True)   # phenology-free
+    mo = b.hydrodata['Date'].dt.month.to_numpy()
+    assert np.nanmean(ow[mo == 1]) > 0                           # not zeroed out
