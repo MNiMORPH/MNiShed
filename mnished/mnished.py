@@ -1761,6 +1761,16 @@ class Buckets(object):
             'senescence_start_doy': _phen.get('senescence_start_doy', 260),
             'senescence_end_doy':   _phen.get('senescence_end_doy', 305),
         }
+        if (self.use_phenology and
+                self.phenology_params['leafout_GDD'] >=
+                self.phenology_params['full_canopy_GDD']):
+            warnings.warn(
+                f"phenology leafout_GDD "
+                f"({self.phenology_params['leafout_GDD']}) >= full_canopy_GDD "
+                f"({self.phenology_params['full_canopy_GDD']}): the green-up ramp "
+                "collapses to a step at leaf-out. If calibrating leafout_GDD, keep "
+                "its upper bound below full_canopy_GDD.",
+                UserWarning, stacklevel=2)
         # Fraction of ET_pot drawn from reservoir 0 (shallow); 1-et_alpha from reservoir 1.
         # Read from general: et_alpha in config YAML; override via run_and_score(et_alpha=).
         self.et_alpha = self.cfg['general'].get('et_alpha', 1.0)
@@ -2051,7 +2061,13 @@ class Buckets(object):
         years = dates.year.to_numpy()
         doy = dates.dayofyear.to_numpy()
         GDD = np.empty_like(gdd_day)
-        for y in np.unique(years):           # reset accumulation each calendar year
+        # Reset accumulation each calendar year. A record that starts mid-year
+        # under-counts that first partial year's thermal time (no pre-record
+        # days), delaying its leaf-out; in practice the first year is spin-up or
+        # the missing months are the cold pre-spring ones, so the effect is
+        # confined to a partial leading year. Start the forcing at a calendar-year
+        # boundary if the first year's phenology matters.
+        for y in np.unique(years):
             m = years == y
             GDD[m] = np.nancumsum(gdd_day[m])
         span = max(p['full_canopy_GDD'] - p['leafout_GDD'], 1e-9)

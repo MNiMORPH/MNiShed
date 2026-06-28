@@ -82,6 +82,11 @@ class _CachedObjective:
                 val = self._f(theta)
                 val = float(val) if np.isfinite(val) else np.nan
             except Exception:
+                # A model evaluation that raises at an off-optimum corner point
+                # is treated as unconstrained (NaN) rather than aborting the whole
+                # profile/Hessian sweep — intentional robustness. `except Exception`
+                # (not bare) still lets KeyboardInterrupt/SystemExit through. A
+                # systematic crash surfaces as an all-NaN row, not a silent zero.
                 val = np.nan
             self._cache[key] = val
             self.n_calls += 1

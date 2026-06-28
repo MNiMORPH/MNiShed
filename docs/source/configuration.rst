@@ -201,7 +201,10 @@ defaults as a temperate-deciduous starting point and adjust per basin.
 **Closure choice.** Because GDD enters nonlinearly, the factor corrects seasonal
 *phasing* rather than being absorbed by ``et_scale``, and the water-balance
 correction normalises against the phenology-adjusted demand, so the annual total
-is preserved under any closure. In practice ``enforce_water_balance: 'none'`` with
+is preserved across closure modes. (The land-ET closure is exact only over a
+common finite-data day-set; with ragged missing forcing/discharge, or a lake basin
+whose open-water evaporation sits outside the land closure, it is approximate.) In
+practice ``enforce_water_balance: 'none'`` with
 a free ``et_scale`` gives the best phenology fit — ``et_scale`` is then free to set
 the annual level while ``leafout_GDD`` sets the phase, whereas a per-year or global
 multiplier can over-produce other seasons when it cannot tune the annual level.

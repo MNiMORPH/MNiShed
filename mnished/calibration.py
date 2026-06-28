@@ -1298,6 +1298,11 @@ def log_flow_residual_terms(result, start=None, end=None, eps=None):
     m = q_mod[mask].to_numpy(dtype=float)
     if eps is None:
         eps = 0.01 * o.mean()
+        # Degenerate window (empty mask, or all-zero observed flow): o.mean() is
+        # NaN or 0, which would make log(0) = -inf poison the residual terms.
+        # Fall back to a tiny positive floor so the log transform stays finite.
+        if not np.isfinite(eps) or eps <= 0:
+            eps = 1e-6
     log_o = np.log(o + eps)
     log_m = np.log(m + eps)
     return pd.DataFrame({
