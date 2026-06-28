@@ -1764,10 +1764,15 @@ class Buckets(object):
             'senescence_method':    _phen.get('senescence_method', 'doy'),
             'senescence_start_doy': _phen.get('senescence_start_doy', 260),
             'senescence_end_doy':   _phen.get('senescence_end_doy', 305),
+            # Critical day length is below the equinox (~12 h) on purpose: a
+            # photoperiod cue transfers in the physically correct direction
+            # (higher latitudes senesce earlier) only when it is crossed AFTER
+            # the autumn equinox, where the higher-latitude day shortens faster.
+            # A near- or above-equinox threshold transfers weakly or backwards.
             'senescence_photoperiod__hr':
-                _phen.get('senescence_photoperiod__hr', 12.5),
+                _phen.get('senescence_photoperiod__hr', 11.0),
             'senescence_photoperiod_span__hr':
-                _phen.get('senescence_photoperiod_span__hr', 2.4),
+                _phen.get('senescence_photoperiod_span__hr', 1.8),
         }
         if (self.use_phenology and
                 self.phenology_params['senescence_method']
