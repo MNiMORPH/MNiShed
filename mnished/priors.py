@@ -31,6 +31,7 @@ Example
 import warnings
 
 import numpy as np
+import pandas as pd
 
 from .hydrograph_separation import HydrographSeparation
 from .recession import BrutsaertNieber
@@ -207,6 +208,121 @@ class Priors:
             f"    snowpack__mm_SWE: 0\n"
         )
         return snippet
+
+
+def leafout_GDD_from_date(forcing, month, day, base_temperature__C=5.0,
+                          tmax_col='Maximum Temperature [C]',
+                          tmin_col='Minimum Temperature [C]',
+                          date_col='Date', return_years=False):
+    """
+    Growing-degree-day leaf-out threshold from a regional green-up date.
+
+    Converts a known canopy leaf-out *date* (``month``, ``day``) into the
+    ``leafout_GDD`` phenology prior for a basin, by accumulating the basin's
+    own daily growing-degree-days (GDD, base ``base_temperature__C``) from
+    January 1 to that date each year and averaging across complete years.
+
+    This grounds the green-up prior in the basin's actual thermal climate
+    rather than a fabricated latitude-to-GDD curve. The leaf-out date is what
+    spring-index phenology climatologies provide — e.g. the USA National
+    Phenology Network Extended Spring Indices (the SI-x first-leaf index;
+    Schwartz, Ault & Betancourt, 2013) — and it carries the latitude
+    dependence implicitly: a later, more-northern green-up date integrates to a
+    larger GDD against the same temperature forcing, so the resulting
+    ``leafout_GDD`` is automatically larger at higher latitude. (Crow Wing,
+    ~46–47°N, calibrates near 200 GDD against a ~late-May leaf-out, versus the
+    generic ~100-GDD default tuned to a basin further south.)
+
+    Parameters
+    ----------
+    forcing : pandas.DataFrame or str
+        The basin temperature forcing, or a path to a CSV of it. Must contain
+        a date column and daily maximum and minimum temperature columns.
+    month, day : int
+        The regional leaf-out date (e.g. ``5, 20`` for May 20). GDD is
+        accumulated from January 1 to this date inclusive, each year.
+    base_temperature__C : float, optional
+        GDD base temperature [°C]. Default ``5.0`` — matches the phenology
+        ``base_temperature__C`` default, so the returned threshold is on the
+        same scale the model accumulates. Pass the value you use in the
+        ``phenology:`` block if it differs.
+    tmax_col, tmin_col, date_col : str, optional
+        Column names in *forcing*. Defaults match the model's input columns.
+    return_years : bool, optional
+        If ``True``, also return the per-year GDD totals. Default ``False``.
+
+    Returns
+    -------
+    float
+        The mean accumulated GDD at the leaf-out date — use as the
+        ``leafout_GDD`` prior in the ``phenology:`` config block.
+    dict, optional
+        ``{year: GDD}`` for each complete year, returned only when
+        ``return_years`` is ``True``.
+
+    Notes
+    -----
+    A year contributes only if its record reaches the leaf-out date; partial
+    leading/trailing years are skipped (with a warning if any are). The early
+    pre-spring days carry essentially no GDD (temperatures below the base), so
+    a record that starts a little after January 1 changes the total
+    negligibly. Use the *same* ``base_temperature__C`` here as in the
+    ``phenology:`` block, or the threshold will not line up with the model's
+    accumulation.
+
+    Examples
+    --------
+    >>> import pandas as pd
+    >>> from mnished import leafout_GDD_from_date
+    >>> df = pd.read_csv('crow_wing_forcing.csv', parse_dates=['Date'])
+    >>> # north-central MN canopy leaf-out ~ May 20 (USA-NPN SI-x)
+    >>> leafout_GDD_from_date(df, 5, 20)            # doctest: +SKIP
+    207.4
+    """
+    if isinstance(forcing, str):
+        forcing = pd.read_csv(forcing, parse_dates=[date_col])
+    for col in (date_col, tmax_col, tmin_col):
+        if col not in forcing.columns:
+            raise KeyError(
+                f"leafout_GDD_from_date: forcing is missing column {col!r}.")
+    dates = pd.DatetimeIndex(forcing[date_col])
+    tmean = 0.5 * (np.asarray(forcing[tmax_col], dtype=float)
+                   + np.asarray(forcing[tmin_col], dtype=float))
+    gdd_day = np.maximum(tmean - base_temperature__C, 0.0)
+    years = dates.year.to_numpy()
+
+    per_year = {}
+    skipped = []
+    for y in np.unique(years):
+        try:
+            target = pd.Timestamp(year=int(y), month=month, day=day)
+        except ValueError as e:      # e.g. Feb 29 in a non-leap year
+            raise ValueError(
+                f"leafout_GDD_from_date: invalid leaf-out date "
+                f"month={month}, day={day} for year {y} ({e}).")
+        in_year = years == y
+        # The record must reach the leaf-out date for the accumulation to be
+        # complete; otherwise the partial sum under-counts that year.
+        if dates[in_year].max() < target:
+            skipped.append(int(y))
+            continue
+        mask = in_year & np.asarray(dates <= target)
+        per_year[int(y)] = float(np.nansum(gdd_day[mask]))
+
+    if not per_year:
+        raise ValueError(
+            "leafout_GDD_from_date: no year in the forcing reaches the "
+            f"leaf-out date (month={month}, day={day}).")
+    if skipped:
+        warnings.warn(
+            f"leafout_GDD_from_date: skipped {len(skipped)} year(s) whose "
+            f"record does not reach the leaf-out date: {skipped}.",
+            UserWarning, stacklevel=2)
+
+    mean_gdd = float(np.mean(list(per_year.values())))
+    if return_years:
+        return mean_gdd, per_year
+    return mean_gdd
 
 
 def suggest_priors(Q, P=None, n_reservoirs=3, dt=1.0,

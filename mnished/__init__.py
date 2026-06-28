@@ -19,7 +19,7 @@ from .identifiability import (
     ridge,
 )
 from .mnished import Buckets, Reservoir, Snowpack, SubCatchment
-from .priors import Priors, suggest_priors
+from .priors import Priors, leafout_GDD_from_date, suggest_priors
 from .recession import BrutsaertNieber
 
 __all__ = [
@@ -37,6 +37,7 @@ __all__ = [
     "HydrographSeparation",
     "BrutsaertNieber",
     "suggest_priors",
+    "leafout_GDD_from_date",
     "Priors",
     "Parameter",
     "ParameterSet",
