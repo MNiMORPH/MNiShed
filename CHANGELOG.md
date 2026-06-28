@@ -9,6 +9,15 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ### Added
 
+- `mnished.io`: the MNiShed input contract — the authoritative, code-grounded
+  spec of the forcing CSV and config YAML (`FORCING_COLUMNS`, `CONFIG_SECTIONS`)
+  plus a fast pre-flight validator (`validate_inputs`, `validate_config`,
+  `validate_forcing`, `ValidationReport`). Reports every contract problem at once
+  and distinguishes errors (will break `initialize`) from warnings (silent
+  degradation, e.g. a missing temperature column disabling snowpack). Complements
+  — does not replace — the deep model-consistency checks in `Buckets.initialize`.
+  Documented in the new `input_contract` page.
+
 - Photoperiod-driven autumn senescence for the GDD phenology coefficient
   (`senescence_method: doy | photoperiod`). The `photoperiod` form ramps the
   canopy brown-down by day length (`senescence_photoperiod__hr` /
