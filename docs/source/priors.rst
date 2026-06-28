@@ -25,3 +25,16 @@ See the :doc:`tutorial` for a full worked example.
 .. autoclass:: mnished.Priors
    :members: summary, to_yaml_snippet
    :member-order: bysource
+
+Phenology leaf-out prior
+------------------------
+
+:func:`~mnished.leafout_GDD_from_date` derives the ``leafout_GDD`` phenology
+prior (see :ref:`the phenology configuration section <vegetation-phenology>`)
+from a *regional leaf-out date* — the quantity that spring-index phenology
+climatologies provide (USA-NPN Extended Spring Indices; Schwartz et al. 2013,
+:doc:`references`). It accumulates the basin's own forcing growing-degree-days to
+that date, so the latitude dependence of green-up is carried by the date and the
+basin's thermal climate rather than by a fitted latitude→GDD curve.
+
+.. autofunction:: mnished.leafout_GDD_from_date

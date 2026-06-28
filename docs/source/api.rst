@@ -5,7 +5,7 @@ This page documents the complete public API exported from the
 ``mnished`` package.  See also:
 
 - :doc:`recession_analysis` — :class:`~mnished.BrutsaertNieber` (Brutsaert–Nieber recession analysis)
-- :doc:`priors` — :class:`~mnished.Priors` and :func:`~mnished.suggest_priors` (data-driven priors)
+- :doc:`priors` — :class:`~mnished.Priors`, :func:`~mnished.suggest_priors`, and :func:`~mnished.leafout_GDD_from_date` (data-driven priors)
 - :doc:`calibration` — :func:`~mnished.run_and_score` and :class:`~mnished.CalibResult` (calibration workflow)
 - :doc:`bmi` — :class:`~mnished.BmiMNiShed` (CSDMS Basic Model Interface wrapper)
 
