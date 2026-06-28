@@ -7,6 +7,26 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+### Added
+
+- Photoperiod-driven autumn senescence for the GDD phenology coefficient
+  (`senescence_method: doy | photoperiod`). The `photoperiod` form ramps the
+  canopy brown-down by day length (`senescence_photoperiod__hr` /
+  `senescence_photoperiod_span__hr`), gated to the post-solstice half-year, and
+  reads the existing `Photoperiod [hr]` forcing column — no new input. Unlike the
+  fixed `doy` calendar window (still the default, so existing configs are
+  unchanged), the date a given photoperiod is reached shifts with latitude, so the
+  cue transfers across latitude. The default critical day length (11.0 hr) is set
+  below the autumn equinox on purpose: only a sub-equinox cue browns down earlier
+  at higher latitudes, the physically correct direction (MNiMORPH/MNiShed#35).
+- `mnished.leafout_GDD_from_date`: derives the `leafout_GDD` phenology prior from
+  a regional leaf-out date by accumulating the basin's own forcing
+  growing-degree-days to that date, grounding the green-up prior in the basin's
+  thermal climate rather than a fitted latitude→GDD curve. The leaf-out date is
+  what spring-index climatologies provide (USA-NPN Extended Spring Index / SI-x;
+  Schwartz et al. 2013) and carries the latitude dependence implicitly
+  (MNiMORPH/MNiShed#35).
+
 ## [3.2.0] - 2026-06-28
 
 ### Added
