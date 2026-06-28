@@ -7,6 +7,8 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
 
 ## [Unreleased]
 
+## [3.2.0] - 2026-06-28
+
 ### Added
 
 - Lake (open-water) sub-catchments: a `kind: lake` sub-catchment is a single
@@ -98,6 +100,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   `run(store_fluxes=True)` / `run_and_score(..., store_fluxes=True)` recording
   mode whose three source columns sum exactly to the modeled discharge
   (MNiMORPH/MNiShed#25).
+
+- Worked example `examples/crow_wing/` (Crow Wing River, north-central Minnesota):
+  a *process-structure* example exercising lakes, parallel sub-catchments, and
+  growing-degree-day phenology together in one real basin (plus frozen ground),
+  driven by the generic config-driven runner, with a documentation page covering
+  the freshet/phenology narrative, the latitude-dependent `leafout_GDD` finding,
+  and the seasonal mass-balance diagnostic (MNiMORPH/MNiShed#27, #28).
 
 ### Fixed
 
@@ -281,4 +290,7 @@ and migration guide.
   `scalar_dt` (the daily timestep is documented as a design choice).
 - No backwards-compatibility shims are provided for the renames above.
 
+[Unreleased]: https://github.com/MNiMORPH/MNiShed/compare/v3.2.0...HEAD
+[3.2.0]: https://github.com/MNiMORPH/MNiShed/compare/v3.1.0...v3.2.0
+[3.1.0]: https://github.com/MNiMORPH/MNiShed/compare/v3.0.0...v3.1.0
 [3.0.0]: https://github.com/MNiMORPH/MNiShed/compare/v2.3.0...v3.0.0
