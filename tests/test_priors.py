@@ -160,3 +160,85 @@ def test_log_recession_coeff_bounds_structure():
     for val in pr.log_recession_coeff_bounds.values():
         if val is not None:
             assert val['lower'] < val['initial'] < val['upper']
+
+
+# ---------------------------------------------------------------------------
+# leafout_GDD_from_date: green-up prior from a regional leaf-out date (#35)
+# ---------------------------------------------------------------------------
+
+import pandas as pd  # noqa: E402
+from mnished import leafout_GDD_from_date  # noqa: E402
+
+
+def _synthetic_forcing(years=range(2000, 2005), amp=15.0, mean=8.0):
+    """Daily Tmax/Tmin from a sinusoidal annual cycle (warmest ~ day 200)."""
+    dates = pd.date_range(f"{min(years)}-01-01", f"{max(years)}-12-31", freq="D")
+    doy = dates.dayofyear.to_numpy()
+    tmean = mean + amp * np.sin(2 * np.pi * (doy - 100) / 365.0)
+    return pd.DataFrame({
+        "Date": dates,
+        "Maximum Temperature [C]": tmean + 4.0,
+        "Minimum Temperature [C]": tmean - 4.0,
+    })
+
+
+def test_leafout_GDD_from_date_monotonic_in_date():
+    """A later leaf-out date integrates more thermal time on the same basin."""
+    df = _synthetic_forcing()
+    g_early = leafout_GDD_from_date(df, 5, 1)
+    g_late = leafout_GDD_from_date(df, 6, 1)
+    assert g_late > g_early > 0.0
+
+
+def test_leafout_GDD_from_date_matches_hand_accumulation():
+    """The returned value equals an explicit per-year GDD accumulation."""
+    df = _synthetic_forcing(years=range(2000, 2003))
+    base = 5.0
+    tmean = 0.5 * (df["Maximum Temperature [C]"] + df["Minimum Temperature [C]"])
+    gdd = np.maximum(tmean - base, 0.0)
+    totals = []
+    for y in (2000, 2001, 2002):
+        target = pd.Timestamp(year=y, month=5, day=20)
+        mask = (df["Date"] >= pd.Timestamp(y, 1, 1)) & (df["Date"] <= target)
+        totals.append(gdd[mask].sum())
+    expected = float(np.mean(totals))
+    assert np.isclose(leafout_GDD_from_date(df, 5, 20, base_temperature__C=base),
+                      expected)
+
+
+def test_leafout_GDD_from_date_returns_per_year():
+    df = _synthetic_forcing(years=range(2000, 2004))
+    mean_gdd, per_year = leafout_GDD_from_date(df, 5, 20, return_years=True)
+    assert set(per_year) == {2000, 2001, 2002, 2003}
+    assert np.isclose(mean_gdd, np.mean(list(per_year.values())))
+
+
+def test_leafout_GDD_from_date_skips_incomplete_years():
+    """A trailing year whose record stops before the leaf-out date is skipped
+    (with a warning), not silently under-counted."""
+    df = _synthetic_forcing(years=range(2000, 2003))
+    # truncate the last year at March 1 — it cannot reach a May leaf-out
+    df = df[df["Date"] <= pd.Timestamp(2002, 3, 1)]
+    with pytest.warns(UserWarning, match="does not reach"):
+        _, per_year = leafout_GDD_from_date(df, 5, 20, return_years=True)
+    assert 2002 not in per_year and 2000 in per_year
+
+
+def test_leafout_GDD_from_date_base_temperature_scales():
+    """A higher base temperature yields a smaller GDD accumulation."""
+    df = _synthetic_forcing()
+    assert (leafout_GDD_from_date(df, 5, 20, base_temperature__C=10.0)
+            < leafout_GDD_from_date(df, 5, 20, base_temperature__C=0.0))
+
+
+def test_leafout_GDD_from_date_missing_column_raises():
+    df = _synthetic_forcing().drop(columns=["Minimum Temperature [C]"])
+    with pytest.raises(KeyError, match="Minimum Temperature"):
+        leafout_GDD_from_date(df, 5, 20)
+
+
+def test_leafout_GDD_from_date_no_year_reaches_date_raises():
+    df = _synthetic_forcing(years=range(2000, 2001))
+    df = df[df["Date"] <= pd.Timestamp(2000, 2, 1)]
+    with pytest.raises(ValueError, match="no year"):
+        leafout_GDD_from_date(df, 5, 20)

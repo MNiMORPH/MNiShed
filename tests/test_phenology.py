@@ -16,6 +16,7 @@ import os
 import warnings
 
 import numpy as np
+import pandas as pd
 import pytest
 import yaml
 
@@ -188,3 +189,87 @@ def test_phenology_with_et_reservoir_draw(tmp_path):
     b = mnished.run_and_score(path, enforce_water_balance="none", metric="KGE",
                               leafout_GDD=260).score
     assert a != b
+
+
+# --------------------------------------------------------------------------
+# Photoperiod-driven autumn senescence (issue #35, part 1)
+# --------------------------------------------------------------------------
+
+def _Kc(tmp_path, phenology, name="ph"):
+    """Phenology Kc array and its day-of-year for a built Buckets."""
+    path = _write(tmp_path, _cfg(phenology=phenology), name)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="none")
+    Kc = np.asarray(b.phenology_Kc())
+    doy = b.hydrodata["Date"].dt.dayofyear.to_numpy()
+    return Kc, doy
+
+
+def test_senescence_method_defaults_to_doy(tmp_path):
+    """Default senescence_method is 'doy' — backward-compatible with v3.2.0."""
+    path = _write(tmp_path, _cfg(phenology={"enabled": True}), "def")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="none")
+    assert b.phenology_params["senescence_method"] == "doy"
+
+
+def test_photoperiod_and_doy_agree_before_autumn(tmp_path):
+    """The two senescence forms differ only in autumn: identical green-up and
+    summer plateau (senescence inactive before the photoperiod/DOY trigger)."""
+    kc_doy, doy = _Kc(tmp_path, {"enabled": True}, "doy")
+    kc_pp, _ = _Kc(tmp_path, {"enabled": True,
+                              "senescence_method": "photoperiod"}, "pp")
+    pre_autumn = doy < 230          # green-up + summer, before either trigger
+    assert np.allclose(kc_doy[pre_autumn], kc_pp[pre_autumn])
+    # they do diverge somewhere in the autumn brown-down
+    assert not np.allclose(kc_doy, kc_pp)
+
+
+def test_photoperiod_no_spring_browndown(tmp_path):
+    """The post-solstice gate keeps spring's equally short days from triggering
+    senescence: Kc still leafs out to full canopy by midsummer."""
+    kc, doy = _Kc(tmp_path, {"enabled": True,
+                             "senescence_method": "photoperiod"})
+    # full canopy reached in July despite short photoperiods earlier in spring
+    jul = (doy >= 182) & (doy <= 212)
+    assert np.isclose(kc[jul].max(), 1.0, atol=1e-6)
+    # spring rises April -> June (leaf-out, not senescing)
+    apr = (doy >= 91) & (doy <= 120)
+    jun = (doy >= 152) & (doy <= 181)
+    assert kc[apr].mean() < kc[jun].mean()
+
+
+def test_photoperiod_senesces_to_dormant_in_late_autumn(tmp_path):
+    """As day length falls well below the critical value, Kc returns toward
+    dormant_Kc — the autumn ET draw-down the freshet/fall lever depends on."""
+    kc, doy = _Kc(tmp_path, {"enabled": True, "dormant_Kc": 0.5,
+                             "senescence_method": "photoperiod"})
+    nov = (doy >= 320) & (doy <= 350)        # short days, fully senesced
+    assert np.isclose(kc[nov].min(), 0.5, atol=1e-6)
+
+
+def test_bad_senescence_method_raises(tmp_path):
+    """An unknown senescence_method is rejected at build time."""
+    path = _write(tmp_path, _cfg(phenology={"enabled": True,
+                                            "senescence_method": "bogus"}), "bad")
+    with pytest.raises(ValueError, match="senescence_method"):
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="none")
+
+
+def test_photoperiod_method_needs_photoperiod_column(tmp_path):
+    """Photoperiod senescence raises a clear error when the forcing lacks the
+    'Photoperiod [hr]' column (rather than failing obscurely downstream)."""
+    df = pd.read_csv(CANNON_CSV).drop(columns=["Photoperiod [hr]"])
+    csv = tmp_path / "no_photoperiod.csv"
+    df.to_csv(csv, index=False)
+    cfg = _cfg(phenology={"enabled": True, "senescence_method": "photoperiod"})
+    cfg["timeseries"]["datafile"] = str(csv)
+    path = _write(tmp_path, cfg, "nopp")
+    with pytest.raises(ValueError, match="Photoperiod"):
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="none")
