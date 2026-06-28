@@ -1758,9 +1758,23 @@ class Buckets(object):
             'full_canopy_GDD':      _phen.get('full_canopy_GDD', 400.0),
             'dormant_Kc':           _phen.get('dormant_Kc', 0.5),
             'full_Kc':              _phen.get('full_Kc', 1.0),
+            # Autumn senescence: 'doy' is a fixed calendar window; 'photoperiod'
+            # drives brown-down by day length (latitude-transferable). See
+            # phenology_Kc().
+            'senescence_method':    _phen.get('senescence_method', 'doy'),
             'senescence_start_doy': _phen.get('senescence_start_doy', 260),
             'senescence_end_doy':   _phen.get('senescence_end_doy', 305),
+            'senescence_photoperiod__hr':
+                _phen.get('senescence_photoperiod__hr', 12.5),
+            'senescence_photoperiod_span__hr':
+                _phen.get('senescence_photoperiod_span__hr', 2.4),
         }
+        if (self.use_phenology and
+                self.phenology_params['senescence_method']
+                not in ('doy', 'photoperiod')):
+            raise ValueError(
+                "phenology senescence_method must be 'doy' or 'photoperiod'; "
+                f"got {self.phenology_params['senescence_method']!r}.")
         if (self.use_phenology and
                 self.phenology_params['leafout_GDD'] >=
                 self.phenology_params['full_canopy_GDD']):
@@ -1911,6 +1925,15 @@ class Buckets(object):
                 "phenology Kc is defined on the ThornthwaiteChang2019 ET "
                 "demand; with et_method='datafile' it is ignored.",
                 UserWarning, stacklevel=2)
+        if (self.use_phenology
+                and self.et_method == 'ThornthwaiteChang2019'
+                and self.phenology_params['senescence_method'] == 'photoperiod'
+                and 'Photoperiod [hr]' not in self.hydrodata.columns):
+            raise ValueError(
+                "phenology senescence_method='photoperiod' needs a "
+                "'Photoperiod [hr]' forcing column (the same day-length input "
+                "ThornthwaiteChang2019 uses); none is present. Supply it, or "
+                "use senescence_method='doy'.")
         self.compute_ET()
 
         # Model spin-up, if requested
@@ -2034,8 +2057,25 @@ class Buckets(object):
         ramps up as accumulated growing-degree-days (GDD, base
         ``base_temperature__C``, reset each calendar year) rise from
         ``leafout_GDD`` to ``full_canopy_GDD``, holds at ``full_Kc`` through
-        summer, then declines back to ``dormant_Kc`` over a day-of-year
-        senescence window (``senescence_start_doy`` → ``senescence_end_doy``).
+        summer, then declines back to ``dormant_Kc`` through autumn senescence.
+
+        Senescence has two forms, selected by ``senescence_method``:
+
+        ``'doy'`` (default)
+            A fixed calendar window: Kc declines linearly from
+            ``senescence_start_doy`` to ``senescence_end_doy``. Simple, but the
+            brown-down date is tied to the calendar and so does not transfer
+            across latitude.
+        ``'photoperiod'``
+            Day-length-driven brown-down: senescence begins as the photoperiod
+            falls below ``senescence_photoperiod__hr`` and completes over a
+            further ``senescence_photoperiod_span__hr`` of day-length decline,
+            restricted to the post-solstice half-year so the equally short days
+            of spring do not trigger it. Because the *date* a given photoperiod
+            is reached shifts with latitude, this form is latitude-transferable —
+            the same two day-length numbers place autumn brown-down correctly at
+            any latitude. Reads the ``'Photoperiod [hr]'`` forcing column (the
+            same day-length input ThornthwaiteChang2019 uses).
 
         Because GDD enters nonlinearly (a thresholded ramp), the factor is not
         collinear with the annual ``et_scale``, so it can correct seasonal
@@ -2072,8 +2112,23 @@ class Buckets(object):
             GDD[m] = np.nancumsum(gdd_day[m])
         span = max(p['full_canopy_GDD'] - p['leafout_GDD'], 1e-9)
         spring = np.clip((GDD - p['leafout_GDD']) / span, 0.0, 1.0)
-        sen_span = max(p['senescence_end_doy'] - p['senescence_start_doy'], 1e-9)
-        senesce = np.clip((doy - p['senescence_start_doy']) / sen_span, 0.0, 1.0)
+        if p['senescence_method'] == 'photoperiod':
+            # Day-length brown-down: ramp 0->1 as the photoperiod falls a span
+            # below the critical day length. Gate to the post-solstice half-year
+            # (doy >= summer solstice ~ 172) so the equally short days of spring
+            # do not trigger autumn senescence. The solstice is the same calendar
+            # date at every latitude, so this gate adds no latitude dependence;
+            # only the photoperiod-crossing date (the transferable part) moves.
+            N = np.asarray(self.hydrodata['Photoperiod [hr]'], dtype=float)
+            sen_span = max(p['senescence_photoperiod_span__hr'], 1e-9)
+            senesce = np.clip(
+                (p['senescence_photoperiod__hr'] - N) / sen_span, 0.0, 1.0)
+            senesce = np.where(doy >= 172, senesce, 0.0)
+        else:
+            sen_span = max(
+                p['senescence_end_doy'] - p['senescence_start_doy'], 1e-9)
+            senesce = np.clip(
+                (doy - p['senescence_start_doy']) / sen_span, 0.0, 1.0)
         canopy = spring * (1.0 - senesce)
         return p['dormant_Kc'] + (p['full_Kc'] - p['dormant_Kc']) * canopy
 
