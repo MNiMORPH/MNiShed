@@ -8,15 +8,16 @@ plus a fast pre-flight validator.
 
 Two roles:
 
-* **Hosts the data spec.** :data:`FORCING_COLUMNS` and :data:`CONFIG_SECTIONS`
-  are declarative descriptions (name, units, when-required) of every input
-  MNiShed reads — the single source of truth a producer (e.g. ``mnished-builder``)
-  can target and that the documentation renders.
-* **Validates inputs up front.** :func:`validate_inputs` (and the narrower
-  :func:`validate_config` / :func:`validate_forcing`) check a config + forcing
-  pair against that spec and return a :class:`ValidationReport` listing *all*
-  problems at once, with messages that say which config option makes a column
-  required.
+* **Documents the data spec.** :data:`FORCING_COLUMNS` and
+  :data:`CONFIG_SECTIONS` are a catalog (name, units, role) of every input MNiShed
+  reads — a human- and producer-facing reference (e.g. for ``mnished-builder``).
+* **Validates inputs up front, and *is* the enforcement.** Which columns/sections
+  are required is config-dependent logic that lives in the validator functions
+  (:func:`required_forcing_columns`, :func:`recommended_forcing_columns`,
+  :func:`validate_config`, :func:`validate_forcing`) — the single source of truth
+  for the conditions; a test keeps the catalog and the functions in sync.
+  :func:`validate_inputs` checks a config + forcing pair and returns a
+  :class:`ValidationReport` listing *all* problems at once.
 
 This is a **contract**-level check (are the right columns and config sections
 present, given the chosen options?). It deliberately does **not** duplicate the
@@ -54,48 +55,43 @@ class ForcingColumn:
 
     name: str
     units: str
-    when_required: str
     description: str
 
 
-#: The forcing-CSV spec: every column MNiShed may read, with the condition under
-#: which it is required. ``when_required='always'`` columns are unconditional.
+#: Documentation catalog of every forcing column MNiShed may read, with its units
+#: and role. This is a *catalog*, not the enforcement: which columns are required
+#: under which options is config-dependent logic and lives in
+#: :func:`required_forcing_columns` / :func:`recommended_forcing_columns` /
+#: :func:`validate_forcing` (the single source of truth; a test keeps this catalog
+#: and those functions in sync).
 FORCING_COLUMNS = (
-    ForcingColumn(DATE, "ISO date", "always",
-                  "Daily timestamps; must be a continuous 1-day series."),
-    ForcingColumn(PRECIP, "mm/day", "always", "Daily precipitation."),
-    ForcingColumn(DISCHARGE, "m^3/s", "always",
+    ForcingColumn(DATE, "ISO date",
+                  "Daily timestamps; must be a continuous 1-day series. Always "
+                  "required."),
+    ForcingColumn(PRECIP, "mm/day", "Daily precipitation. Always required."),
+    ForcingColumn(DISCHARGE, "m^3/s",
                   "Observed streamflow at the gauge (converted to mm/day using "
-                  "catchment.drainage_basin_area__km2)."),
+                  "catchment.drainage_basin_area__km2). Always required."),
     ForcingColumn(TMEAN, "deg C",
-                  "a daily mean temperature is needed by snowmelt/frozen ground — "
-                  "error if an active snowmelt.fdd_threshold, warning if "
-                  "modules.snowpack — but supply this column OR both Min and Max "
-                  "(the model derives the mean from their midpoint)",
                   "Daily mean temperature; drives snowmelt and the frozen-ground "
-                  "index. Synthesized from Min+Max if absent. (Thornthwaite ET "
-                  "uses Min/Max directly, not this column.)"),
+                  "index (needed when an fdd_threshold is active or snowpack is "
+                  "on). Synthesized from Min+Max if absent, so supply this column "
+                  "or both Min and Max. Thornthwaite ET uses Min/Max directly, "
+                  "not this column."),
     ForcingColumn(TMIN, "deg C",
-                  "**error** for ThornthwaiteChang2019 (the Chang effective "
-                  "temperature uses the diurnal range); with Max also supplies "
-                  "the snowmelt mean and the dtr_fgi_decay range",
-                  "Daily minimum temperature; with the maximum gives the Chang "
-                  "effective temperature, the frozen-ground-index decay range, "
-                  "and the midpoint mean temperature."),
+                  "Daily minimum temperature; required (with Max) by "
+                  "ThornthwaiteChang2019 (the Chang effective temperature uses the "
+                  "diurnal range), and supplies the snowmelt mean and the "
+                  "dtr_fgi_decay range."),
     ForcingColumn(TMAX, "deg C",
-                  "**error** for ThornthwaiteChang2019 (the Chang effective "
-                  "temperature uses the diurnal range); with Min also supplies "
-                  "the snowmelt mean and the dtr_fgi_decay range",
                   "Daily maximum temperature; see Minimum Temperature."),
     ForcingColumn(PHOTOPERIOD, "hours",
-                  "evapotranspiration_method ThornthwaiteChang2019",
                   "Day length, from latitude and date; required by the "
                   "Thornthwaite-Chang reference ET (which also covers phenology "
                   "photoperiod senescence)."),
     ForcingColumn(ET, "mm/day",
-                  "evapotranspiration_method datafile",
                   "Measured/reference evapotranspiration, used directly when "
-                  "evapotranspiration_method is 'datafile'."),
+                  "evapotranspiration_method is 'datafile' (required then)."),
 )
 
 #: The config-YAML spec: top-level sections, whether each is required, and its
@@ -277,8 +273,9 @@ def validate_config(config):
     cfg, _ = _load_yaml(config)
     report = ValidationReport()
 
-    for section in ("timeseries", "catchment", "general"):
-        spec = CONFIG_SECTIONS[section]
+    for section, spec in CONFIG_SECTIONS.items():
+        if spec.get("required") is not True:    # one-of/with-reservoirs handled below
+            continue
         block = cfg.get(section)
         if not isinstance(block, dict):
             report.errors.append(f"missing required config section '{section}:'")

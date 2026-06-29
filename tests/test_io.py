@@ -252,3 +252,23 @@ def test_thornthwaite_mean_only_is_insufficient():
     cfg = {"catchment": {"evapotranspiration_method": "ThornthwaiteChang2019"}}
     r = mnished.validate_forcing(df, cfg)
     assert any(io.TMIN in e or io.TMAX in e for e in r.errors)
+
+
+def test_forcing_catalog_matches_the_validator_functions():
+    """The FORCING_COLUMNS catalog and the validator functions stay in sync:
+    the catalog lists exactly the known columns, and every column the functions
+    can require/recommend is catalogued. Guards against the spec/enforcement
+    drift of MNiMORPH/MNiShed#7."""
+    catalog = {c.name for c in io.FORCING_COLUMNS}
+    known = {io.DATE, io.PRECIP, io.DISCHARGE, io.TMEAN, io.TMIN, io.TMAX,
+             io.PHOTOPERIOD, io.ET}
+    assert catalog == known
+    referenced = set()
+    for et in ("datafile", "ThornthwaiteChang2019"):
+        cfg = {"catchment": {"evapotranspiration_method": et},
+               "modules": {"snowpack": True, "dtr_fgi_decay": True},
+               "snowmelt": {"fdd_threshold": 10.0}}
+        referenced |= set(io.required_forcing_columns(cfg))
+        referenced |= set(io.recommended_forcing_columns(cfg))
+    referenced |= {io.TMEAN, io.TMIN, io.TMAX}     # the temperature-disjunction columns
+    assert referenced <= catalog                   # no rule references an uncatalogued column

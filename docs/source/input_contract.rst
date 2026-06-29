@@ -47,7 +47,8 @@ Errors vs. warnings
 The forcing-CSV spec
 --------------------
 
-The programmatic source of truth is :data:`mnished.io.FORCING_COLUMNS`.
+:data:`mnished.io.FORCING_COLUMNS` is the column catalog; the *enforcement* (which
+columns are required under which options) lives in the validator functions.
 
 .. list-table::
    :header-rows: 1
@@ -90,7 +91,8 @@ The programmatic source of truth is :data:`mnished.io.FORCING_COLUMNS`.
 The config-YAML spec
 --------------------
 
-The programmatic source of truth is :data:`mnished.io.CONFIG_SECTIONS`.
+:data:`mnished.io.CONFIG_SECTIONS` catalogs the sections; :func:`mnished.validate_config`
+is the enforcement (it consumes the catalog's required sections directly).
 
 .. list-table::
    :header-rows: 1
