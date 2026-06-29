@@ -406,3 +406,33 @@ def test_phenology_falls_back_on_minmax_mean(tmp_path):
     assert "Mean Temperature [C]" in b_no.hydrodata.columns   # synthesized at load
     assert np.allclose(kc_with, kc_no)                        # identical GDD -> Kc
     assert np.isfinite(kc_no).all()
+
+
+def test_phenology_works_in_southern_hemisphere(tmp_path):
+    """The photoperiod-anchored phenology flips to the southern seasonal cycle:
+    Kc peaks in the southern summer (DJF) and is dormant in the southern winter
+    (JJA), the mirror of a northern basin, with no hardcoded northern calendar
+    (MNiMORPH/MNiShed#9). The GDD reset at the (southern, mid-year) winter
+    solstice keeps the southern growing season — which straddles New Year — in
+    one phenology year."""
+    dates = pd.date_range("2000-01-01", "2003-12-31", freq="D")
+    doy = dates.dayofyear.to_numpy()
+    tmean = 10 + 18 * np.sin(2 * np.pi * (doy - 15) / 365.0)   # warm in DJF (S summer)
+    df = pd.DataFrame({
+        "Date": dates, "Precipitation [mm/day]": 2.0, "Discharge [m^3/s]": 5.0,
+        "Minimum Temperature [C]": tmean - 5.0, "Maximum Temperature [C]": tmean + 5.0,
+        "Photoperiod [hr]": _day_length_hours(-41.5, doy)})       # southern latitude
+    csv = tmp_path / "south.csv"
+    df.to_csv(csv, index=False)
+    cfg = _cfg(phenology={"enabled": True, "senescence_method": "photoperiod"})
+    cfg["timeseries"]["datafile"] = str(csv)
+    cfg["modules"] = {"snowpack": False, "frozen_ground": False,
+                      "rain_on_snow": False, "direct_runoff": False}
+    path = _write(tmp_path, cfg, "south")
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="none")
+    Kc = np.asarray(b.phenology_Kc())
+    mo = b.hydrodata["Date"].dt.month.to_numpy()
+    assert Kc[np.isin(mo, [12, 1, 2])].mean() > Kc[np.isin(mo, [6, 7, 8])].mean()

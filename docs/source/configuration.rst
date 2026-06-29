@@ -211,12 +211,23 @@ closed fall balance. Two forms are available, via ``senescence_method``:
 * ``photoperiod`` — day-length-driven brown-down. Senescence begins as the
   photoperiod falls below ``senescence_photoperiod__hr`` and completes over a
   further ``senescence_photoperiod_span__hr`` of day-length decline, restricted to
-  the post-solstice half-year so the equally short days of spring do not trigger
-  it. Because the *date* a given photoperiod is reached shifts with latitude, the
-  same two day-length numbers place autumn brown-down correctly at any latitude —
-  the fixed-DOY window cannot. It reads the ``Photoperiod [hr]`` forcing column
-  (the same day-length input ``ThornthwaiteChang2019`` uses), so it needs no extra
-  data.
+  the **declining-photoperiod half-year** (after the summer-solstice maximum) so
+  the equally short days of spring do not trigger it. Because the *date* a given
+  photoperiod is reached shifts with latitude, the same two day-length numbers
+  place autumn brown-down correctly at any latitude — the fixed-DOY window cannot.
+  It reads the ``Photoperiod [hr]`` forcing column (the same day-length input
+  ``ThornthwaiteChang2019`` uses), so it needs no extra data.
+
+  Keying the gate on the photoperiod *trend* (rather than a fixed day-of-year),
+  and resetting the growing-degree-day accumulator at the winter solstice (the
+  photoperiod minimum) rather than 1 January, makes the whole phenology
+  **hemisphere- and leap-year-agnostic**: a southern-hemisphere basin senesces in
+  its own autumn (≈Mar–May) and accumulates GDD across the calendar new year
+  automatically. In the **tropics** the day length never falls to a sub-equinox
+  critical value, so photoperiod senescence simply never fires (it is not
+  spurious, just inactive) — tropical drought-deciduous phenology is
+  rainfall-driven, so use measured ET there rather than this temperature/
+  day-length scheme.
 
   The critical day length defaults to **11.0 hr**, deliberately *below* the
   ~12-hr autumn-equinox value. This is what makes the cue transfer in the

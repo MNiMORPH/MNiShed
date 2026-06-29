@@ -2136,30 +2136,43 @@ class Buckets(object):
         dates = pd.DatetimeIndex(self.hydrodata['Date'])
         years = dates.year.to_numpy()
         doy = dates.dayofyear.to_numpy()
+        N = (np.asarray(self.hydrodata['Photoperiod [hr]'], dtype=float)
+             if 'Photoperiod [hr]' in self.hydrodata.columns else None)
+
+        # Reset GDD accumulation at the winter solstice (the photoperiod minimum)
+        # rather than Jan 1, so a southern-hemisphere growing season — which
+        # straddles the calendar new year — stays within one phenology year. In
+        # the northern hemisphere the minimum sits in late December (~the Jan-1
+        # boundary) and the intervening days are sub-base-temperature, so this is
+        # unchanged in practice. Falls back to the calendar year without a
+        # photoperiod column (phenology only acts under ThornthwaiteChang2019,
+        # which supplies it). A record that starts mid-phenology-year under-counts
+        # that leading partial year's thermal time; in practice it is spin-up or
+        # the missing months are the cold pre-spring ones.
+        if N is not None:
+            reset_doy = int(doy[np.nanargmin(N)])
+            phen_year = years - (doy < reset_doy).astype(int)
+        else:
+            phen_year = years
         GDD = np.empty_like(gdd_day)
-        # Reset accumulation each calendar year. A record that starts mid-year
-        # under-counts that first partial year's thermal time (no pre-record
-        # days), delaying its leaf-out; in practice the first year is spin-up or
-        # the missing months are the cold pre-spring ones, so the effect is
-        # confined to a partial leading year. Start the forcing at a calendar-year
-        # boundary if the first year's phenology matters.
-        for y in np.unique(years):
-            m = years == y
+        for y in np.unique(phen_year):
+            m = phen_year == y
             GDD[m] = np.nancumsum(gdd_day[m])
         span = max(p['full_canopy_GDD'] - p['leafout_GDD'], 1e-9)
         spring = np.clip((GDD - p['leafout_GDD']) / span, 0.0, 1.0)
         if p['senescence_method'] == 'photoperiod':
             # Day-length brown-down: ramp 0->1 as the photoperiod falls a span
-            # below the critical day length. Gate to the post-solstice half-year
-            # (doy >= summer solstice ~ 172) so the equally short days of spring
-            # do not trigger autumn senescence. The solstice is the same calendar
-            # date at every latitude, so this gate adds no latitude dependence;
-            # only the photoperiod-crossing date (the transferable part) moves.
-            N = np.asarray(self.hydrodata['Photoperiod [hr]'], dtype=float)
+            # below the critical day length, active only while the photoperiod is
+            # DECLINING (the post-summer-solstice half-year). Keying the gate on
+            # the photoperiod trend rather than a fixed day-of-year makes it
+            # hemisphere- and leap-year-agnostic — the declining half is the
+            # northern Jun->Dec or the southern Dec->Jun automatically — while
+            # still keeping the equally short (but lengthening) days of spring
+            # from triggering autumn senescence.
             sen_span = max(p['senescence_photoperiod_span__hr'], 1e-9)
             senesce = np.clip(
                 (p['senescence_photoperiod__hr'] - N) / sen_span, 0.0, 1.0)
-            senesce = np.where(doy >= 172, senesce, 0.0)
+            senesce = np.where(np.gradient(N) <= 0.0, senesce, 0.0)
         else:
             sen_span = max(
                 p['senescence_end_doy'] - p['senescence_start_doy'], 1e-9)
