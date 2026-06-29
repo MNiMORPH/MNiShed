@@ -5,8 +5,9 @@ Runs the Crow Wing example (``examples/crow_wing/``) at an SCE-UA-calibrated
 parameter set over a representative decade (2001-2010) with ``store_fluxes`` and
 plots the per-season discharge split by source (fast/event, slow/baseflow, lake
 outlet) against observed Q — the real-basin version of the seasonal mass-balance
-diagnostic. The parameters below are a calibration result (KGE_logKGE ~0.68 over
-the decade); re-run the example's ``calibrate.py`` to refit.
+diagnostic. The parameters below are an 8-decade multi-window SCE-UA best fit
+(composite KGE_logKGE ~0.74, with a forest-physical melt factor ~2.5); re-run the
+example's ``calibrate.py`` to refit.
 
 Usage (from the repository root)::
 
@@ -33,16 +34,16 @@ OUT = os.path.join(ROOT, "docs", "source", "_static", "crow_wing_seasonal.png")
 # SCE-UA best-fit (calibration coordinates; log__ names are log10). Regenerate
 # with `python calibrate.py sceua` in examples/crow_wing/.
 THETA = {
-    "PDD_melt_factor": 0.8385,
-    "et_scale": 0.9313,
-    "log__recession_coeff_soil": 0.9527,
-    "log__recession_coeff_gw": 3.4310,
-    "f_exfil_soil": 0.3074,
-    "log__recession_coeff_lake": 3.9846,
-    "log__H_sill_lake": 3.0082,
-    "f_route_lake": 0.9006,
-    "log__fdd_threshold": 1.8869,
-    "leafout_GDD": 225.04,
+    "PDD_melt_factor": 2.5129,
+    "et_scale": 0.7489,
+    "log__recession_coeff_soil": 1.5301,
+    "log__recession_coeff_gw": 3.2451,
+    "f_exfil_soil": 0.6422,
+    "log__recession_coeff_lake": 4.6543,
+    "log__H_sill_lake": 1.6879,
+    "f_route_lake": 0.7821,
+    "log__fdd_threshold": 1.6785,
+    "leafout_GDD": 177.2311,
 }
 START, END = "2001-01-01", "2010-12-31"
 

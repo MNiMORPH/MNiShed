@@ -63,28 +63,29 @@ environment (`pip install mnished[jit] spotpy`; the Numba JIT needs
 
 ## Expected result
 
-SCE-UA reaches a composite **`KGE_logKGE` ≈ 0.77** over the eight decades, with
-`leafout_GDD` settling near a physically-correct late-May green-up and the melt
-factor at a forest-physical value:
+SCE-UA reaches a composite **`KGE_logKGE` ≈ 0.74** over the eight decades, with
+`leafout_GDD` settling at a mid-to-late-May green-up and the melt factor at a
+forest-physical value:
 
 | parameter | value | note |
 |-----------|------:|------|
-| `leafout_GDD` | ~205 GDD | green-up ~May 25 (physical for ~46–47°N) |
-| `PDD_melt_factor` | ~2.2 | mm SWE/°C/day — forest-physical |
-| `et_scale` | ~0.83 | free (no water-balance rescaling) |
+| `leafout_GDD` | ~177 GDD | green-up ~mid-to-late May (physical for ~46–47°N) |
+| `PDD_melt_factor` | ~2.5 | mm SWE/°C/day — forest-physical |
+| `et_scale` | ~0.75 | free (no water-balance rescaling) |
 
 Seasonal mod/obs for a representative decade (2001–2010):
 
 | season | mod/obs |
 |--------|--------:|
-| DJF | ~1.16 |
-| MAM | ~0.91 |
-| JJA | ~0.93 |
-| SON | ~1.01 |
+| DJF | ~1.08 |
+| MAM | ~0.89 |
+| JJA | ~0.95 |
+| SON | ~1.10 |
 
-Calibrating `leafout_GDD` (vs. fixing it at the generic default) tightens the
-spring freshet — top-20 observed-peak mod/obs goes from ~0.67 to ~1.04 — and
-pulls the fall recession into line (SON 1.2 → 1.0).
+It is the phenology `Kc` (suppressing early-spring ET until leaf-out) that
+recovers the freshet; the `leafout_GDD` threshold itself is only weakly
+constrained — calibrating it barely moves the composite score — so what the
+calibration recovers is the *physical placement* of green-up, not a score gain.
 
 ## Honest open items
 
@@ -92,9 +93,10 @@ This example reproduces the *process behaviour* well; it is a research setup, no
 a polished operational calibration. Two residuals remain visible:
 
 - **A winter↔fall trade-off.** `KGE_logKGE` is fairly flat across the seasonal
-  shape, so runs can swap a slightly high winter (DJF ~1.16) for a slightly high
-  fall and back at nearly the same score. A seasonally-weighted objective would
-  resolve which to prefer.
+  shape, so runs can swap a slightly high winter (DJF ~1.08) for a slightly high
+  fall and back at nearly the same score. Calibrating with the
+  `KGE_logKGE_seasonal` metric — which weights the four meteorological seasons
+  equally rather than by volume — presses on this directly.
 - **Groundwater recession.** The deep store's recession is gentle; part of the
   residual fall flow is a baseflow-shape issue, partly separate from ET phasing.
 

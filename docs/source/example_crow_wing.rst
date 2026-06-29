@@ -106,8 +106,8 @@ reusable tool behind this example's narrative.
 Running it and what to expect
 -----------------------------
 
-SCE-UA reaches a composite ``KGE_logKGE`` ≈ **0.77** over the eight decades, with
-``leafout_GDD`` at a physically-correct late-May green-up and the melt factor at a
+SCE-UA reaches a composite ``KGE_logKGE`` ≈ **0.74** over the eight decades, with
+``leafout_GDD`` at a mid-to-late-May green-up and the melt factor at a
 forest-physical value:
 
 .. list-table::
@@ -118,27 +118,33 @@ forest-physical value:
      - value
      - note
    * - ``leafout_GDD``
-     - ~205 GDD
-     - green-up ~late May (physical for ~46–47°N)
+     - ~177 GDD
+     - green-up ~mid-to-late May (physical for ~46–47°N)
    * - ``PDD_melt_factor``
-     - ~2.2
+     - ~2.5
      - mm SWE °C⁻¹ day⁻¹ — forest-physical
    * - ``et_scale``
-     - ~0.83
+     - ~0.75
      - free (no water-balance rescaling)
 
-Calibrating ``leafout_GDD`` (vs. fixing it at the generic default) tightens the
-spring freshet — top-20 observed-peak mod/obs goes from ~0.67 to ~1.04 — and pulls
-the fall recession into line (SON ~1.2 → ~1.0).
+Over the 2001–2010 decade (the figure above) the seasonal balance is within
+roughly ±10 %: modeled/observed discharge is 1.08 (DJF), 0.89 (MAM), 0.95 (JJA),
+and 1.10 (SON) — spring slightly under (the freshet) and winter/fall slightly
+over. It is the phenology :math:`K_c` — suppressing early-spring ET until
+leaf-out — that recovers the freshet; the ``leafout_GDD`` threshold itself is only
+weakly constrained (calibrating it barely moves the composite score), so what the
+calibration recovers is the *physical placement* of green-up, not a score gain.
 
 .. note::
 
    **This is a research example, not a polished operational calibration.** Two
    residuals remain visible: a winter↔fall trade-off (``KGE_logKGE`` is fairly
    flat across the seasonal shape, so runs can swap a slightly high winter for a
-   slightly high fall at nearly the same score — a seasonally-weighted objective
-   would resolve it), and a gentle groundwater recession whose shape contributes
-   part of the residual fall flow. They are documented rather than hidden.
+   slightly high fall at nearly the same score — calibrating with
+   ``metric: KGE_logKGE_seasonal``, which weights the four meteorological seasons
+   equally rather than by volume, presses on this directly), and a gentle
+   groundwater recession whose shape contributes part of the residual fall flow.
+   They are documented rather than hidden.
 
 See ``examples/crow_wing/README.md`` for the full parameter set, the eight decade
 windows (the 1981–1990 decade is omitted — its observed discharge is ~8% present),
