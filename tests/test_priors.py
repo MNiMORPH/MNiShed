@@ -242,3 +242,15 @@ def test_leafout_GDD_from_date_no_year_reaches_date_raises():
     df = df[df["Date"] <= pd.Timestamp(2000, 2, 1)]
     with pytest.raises(ValueError, match="no year"):
         leafout_GDD_from_date(df, 5, 20)
+
+
+def test_leafout_GDD_from_date_prefers_mean_column():
+    """When a 'Mean Temperature [C]' column is present, the helper uses it
+    (matching the model) rather than the min/max midpoint (MNiMORPH/MNiShed#8)."""
+    df = _synthetic_forcing(years=range(2000, 2003))
+    midpoint = 0.5 * (df["Maximum Temperature [C]"] + df["Minimum Temperature [C]"])
+    df["Mean Temperature [C]"] = midpoint + 3.0          # a true mean, 3 C warmer
+    with_mean = leafout_GDD_from_date(df, 5, 20)
+    without = leafout_GDD_from_date(
+        df.drop(columns=["Mean Temperature [C]"]), 5, 20)
+    assert with_mean > without                            # warmer mean -> more GDD

@@ -281,13 +281,23 @@ def leafout_GDD_from_date(forcing, month, day, base_temperature__C=5.0,
     """
     if isinstance(forcing, str):
         forcing = pd.read_csv(forcing, parse_dates=[date_col])
-    for col in (date_col, tmax_col, tmin_col):
-        if col not in forcing.columns:
-            raise KeyError(
-                f"leafout_GDD_from_date: forcing is missing column {col!r}.")
+    if date_col not in forcing.columns:
+        raise KeyError(
+            f"leafout_GDD_from_date: forcing is missing column {date_col!r}.")
     dates = pd.DatetimeIndex(forcing[date_col])
-    tmean = 0.5 * (np.asarray(forcing[tmax_col], dtype=float)
-                   + np.asarray(forcing[tmin_col], dtype=float))
+    # Use the same daily mean the model would: the 'Mean Temperature [C]' column
+    # when present (it may be a true integrated mean), else the min/max midpoint
+    # the model synthesizes at load — so the prior lands on the model's GDD scale.
+    if 'Mean Temperature [C]' in forcing.columns:
+        tmean = np.asarray(forcing['Mean Temperature [C]'], dtype=float)
+    else:
+        for col in (tmax_col, tmin_col):
+            if col not in forcing.columns:
+                raise KeyError(
+                    f"leafout_GDD_from_date: forcing needs 'Mean Temperature [C]' "
+                    f"or both {tmax_col!r} and {tmin_col!r}; missing {col!r}.")
+        tmean = 0.5 * (np.asarray(forcing[tmax_col], dtype=float)
+                       + np.asarray(forcing[tmin_col], dtype=float))
     gdd_day = np.maximum(tmean - base_temperature__C, 0.0)
     years = dates.year.to_numpy()
 
