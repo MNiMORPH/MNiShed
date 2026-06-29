@@ -35,6 +35,10 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   what spring-index climatologies provide (USA-NPN Extended Spring Index / SI-x;
   Schwartz et al. 2013) and carries the latitude dependence implicitly
   (MNiMORPH/MNiShed#35).
+- Season-balanced calibration objective `KGE_logKGE_seasonal`: averages
+  `KGE_logKGE` equally over the four meteorological seasons instead of over the
+  whole record, so the fit is not dominated by the high-volume seasons and cannot
+  trade a too-high winter for a too-high fall (MNiMORPH/MNiShed#37).
 
 ### Changed
 

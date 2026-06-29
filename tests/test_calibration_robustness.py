@@ -127,3 +127,51 @@ def test_none_reservoir_entries_in_post_spinup_allowed(tmp_path):
         cfg_path, start='1993-01-01', end='1994-12-31', spin_up_cycles=1,
         metric='KGE', post_spinup_states={'reservoirs': [None, 350.0]})
     assert isinstance(result.final_states, dict)
+
+
+# --------------------------------------------------------------------------
+# Seasonally-weighted objective (issue #37): equal weight per meteorological
+# season, so a whole-record-flat fit can't trade a high winter for a high fall.
+# --------------------------------------------------------------------------
+
+def _write_cfg(tmp_path, cfg):
+    p = tmp_path / "cfg.yml"
+    p.write_text(yaml.safe_dump(cfg))
+    return str(p)
+
+
+def test_seasonal_metric_equals_mean_of_per_season_scores(tmp_path):
+    import numpy as np
+    import pandas as pd
+    from mnished.calibration import _kge_logkge, _seasonal_mean
+
+    path = _write_cfg(tmp_path, _legacy_cfg())
+    res = mnished.run_and_score(path, enforce_water_balance="global",
+                                metric="KGE_logKGE_seasonal")
+    assert math.isfinite(res.score)
+
+    # reconstruct the equal-weight seasonal mean by hand from the scored rows
+    hd = res.buckets.hydrodata
+    q_mod = pd.to_numeric(hd["Specific Discharge (modeled) [mm/day]"],
+                          errors="coerce")
+    q_obs = hd["Specific Discharge [mm/day]"]
+    mask = q_mod.notna() & q_obs.notna()
+    m = q_mod[mask].to_numpy(float)
+    o = q_obs[mask].to_numpy(float)
+    months = pd.DatetimeIndex(hd["Date"][mask]).month.to_numpy()
+    assert np.isclose(res.score, _seasonal_mean(_kge_logkge, m, o, months))
+
+
+def test_seasonal_metric_differs_from_whole_record(tmp_path):
+    path = _write_cfg(tmp_path, _legacy_cfg())
+    seasonal = mnished.run_and_score(path, enforce_water_balance="global",
+                                     metric="KGE_logKGE_seasonal").score
+    whole = mnished.run_and_score(path, enforce_water_balance="global",
+                                  metric="KGE_logKGE").score
+    assert not math.isclose(seasonal, whole)
+
+
+def test_unknown_metric_lists_seasonal_option(tmp_path):
+    path = _write_cfg(tmp_path, _legacy_cfg())
+    with pytest.raises(ValueError, match="KGE_logKGE_seasonal"):
+        mnished.run_and_score(path, metric="not_a_metric")

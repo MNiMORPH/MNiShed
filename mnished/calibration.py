@@ -320,6 +320,39 @@ _METRICS = {'NSE': _nse, 'KGE': _kge, 'logKGE': _log_kge,
             'KGE_logKGE_logFDC_BFI': _kge_logkge_logfdc_bfi,
             'logKGE_logFDC_BFI': _logkge_logfdc_bfi}
 
+_SEASON_OF_MONTH = {12: 'DJF', 1: 'DJF', 2: 'DJF',
+                    3: 'MAM', 4: 'MAM', 5: 'MAM',
+                    6: 'JJA', 7: 'JJA', 8: 'JJA',
+                    9: 'SON', 10: 'SON', 11: 'SON'}
+
+
+def _seasonal_mean(base, m, o, months, min_per_season=10):
+    """Equal-weight-per-season objective: the base metric computed independently
+    within each meteorological season (DJF/MAM/JJA/SON), then averaged across the
+    seasons that have at least ``min_per_season`` scored days.
+
+    A whole-record metric is dominated by the high-volume seasons, so a fit can
+    swap a slightly-too-high winter for a slightly-too-high fall at nearly the
+    same score (the flat-objective trade-off on lake/snowmelt basins). Weighting
+    the four seasons equally instead makes a parameter set satisfy all of them
+    (MNiMORPH/MNiShed#37). Returns NaN if fewer than one season qualifies.
+    """
+    labels = np.array([_SEASON_OF_MONTH[int(mo)] for mo in months])
+    scores = []
+    for season in ('DJF', 'MAM', 'JJA', 'SON'):
+        sel = labels == season
+        if int(sel.sum()) >= min_per_season:
+            s = base(m[sel], o[sel])
+            if np.isfinite(s):
+                scores.append(s)
+    return float(np.mean(scores)) if scores else float('nan')
+
+
+# Season-aware objectives: name -> base (m, o) metric averaged equally over the
+# four meteorological seasons. Computed specially (they need the dates) at the
+# scoring site in run_and_score.
+_SEASONAL_METRICS = {'KGE_logKGE_seasonal': _kge_logkge}
+
 
 def _steady_state_depths(reservoirs, mean_q):
     """
@@ -783,12 +816,16 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         and inter-annual climate memory.  Set to 0 when providing
         initial_states for chained decade runs.
     metric : {'KGE', 'NSE', 'logKGE', 'KGE_logKGE', 'KGE_logKGE_logFDC',
-              'KGE_logKGE_logFDC_BFI'}, optional
+              'KGE_logKGE_logFDC_BFI', 'KGE_logKGE_seasonal'}, optional
         Goodness-of-fit metric.  Default is 'KGE'.
         ``'KGE_logKGE'`` returns 0.5*KGE + 0.5*logKGE, balancing
         peak and low-flow performance (Yilmaz et al. 2008).
         ``'KGE_logKGE_logFDC_BFI'`` adds a BFI bias-ratio score
         (1 - abs(BFI_mod/BFI_obs - 1)) as a fourth equal-weight component.
+        ``'KGE_logKGE_seasonal'`` averages ``KGE_logKGE`` equally over the four
+        meteorological seasons instead of over the whole record, so the fit is
+        not dominated by the high-volume seasons and cannot trade a too-high
+        winter for a too-high fall (MNiMORPH/MNiShed#37).
     routing_N : int, optional
         Number of identical linear reservoirs in the Nash cascade used
         for channel routing (shape parameter of the gamma IUH).
@@ -866,8 +903,10 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     When ``start`` is None (default), the original full-record behaviour is
     preserved: spin-up and scoring both run the complete hydrodata record.
     """
-    if metric not in _METRICS:
-        raise ValueError(f"metric must be one of {list(_METRICS)}; got {metric!r}")
+    if metric not in _METRICS and metric not in _SEASONAL_METRICS:
+        raise ValueError(
+            f"metric must be one of "
+            f"{list(_METRICS) + list(_SEASONAL_METRICS)}; got {metric!r}")
 
     # Deprecation: the flat single-sub-catchment state shape is removed in v4.0
     # (#18). Warn on flat input; the nested form is the forward contract.
@@ -1243,8 +1282,14 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     m = np.asarray(q_mod[mask], dtype=float)
     o = np.asarray(q_obs[mask], dtype=float)
 
+    if metric in _SEASONAL_METRICS:
+        _months = pd.DatetimeIndex(b.hydrodata['Date'][mask]).month.to_numpy()
+        _score = _seasonal_mean(_SEASONAL_METRICS[metric], m, o, _months)
+    else:
+        _score = _METRICS[metric](m, o)
+
     return CalibResult(
-        score        = _METRICS[metric](m, o),
+        score        = _score,
         aic          = _aic(m, o, k),
         bfi_obs      = _eckhardt_bfi(o),
         bfi_mod      = _eckhardt_bfi(m),
