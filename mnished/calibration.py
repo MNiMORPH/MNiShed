@@ -834,7 +834,10 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
         ``'KGE_logKGE_seasonal'`` averages ``KGE_logKGE`` equally over the four
         meteorological seasons instead of over the whole record, so the fit is
         not dominated by the high-volume seasons and cannot trade a too-high
-        winter for a too-high fall (MNiMORPH/MNiShed#37).
+        winter for a too-high fall (MNiMORPH/MNiShed#37). Only the returned
+        ``score`` is season-balanced; the other ``CalibResult`` fields (``aic``,
+        ``bfi_*``, the FDC terms) remain whole-record diagnostics, so do not mix
+        them with a seasonal ``score`` on the same weighting basis.
     routing_N : int, optional
         Number of identical linear reservoirs in the Nash cascade used
         for channel routing (shape parameter of the gamma IUH).
