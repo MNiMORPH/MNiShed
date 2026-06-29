@@ -216,7 +216,8 @@ def test_thornthwaite_without_any_temperature_errors():
     df = _forcing([io.PRECIP, io.DISCHARGE, io.PHOTOPERIOD])
     cfg = {"catchment": {"evapotranspiration_method": "ThornthwaiteChang2019"}}
     r = mnished.validate_forcing(df, cfg)
-    assert any("temperature" in e for e in r.errors)
+    assert any(io.TMIN in e for e in r.errors)      # Chang ET needs Min and Max
+    assert any(io.TMAX in e for e in r.errors)
 
 
 def test_datafile_phenology_photoperiod_does_not_require_photoperiod():
@@ -241,3 +242,13 @@ def test_inf_fdd_threshold_is_accepted():
     cfg = _good_config()
     cfg["snowmelt"] = {"fdd_threshold": float("inf")}     # the 'never frozen' default
     assert mnished.validate_config(cfg).ok
+
+
+def test_thornthwaite_mean_only_is_insufficient():
+    """Thornthwaite-Chang's effective temperature uses Min/Max (the diurnal
+    range), so a Mean-only forcing (no Min/Max) is an error even though it has a
+    mean temperature."""
+    df = _forcing([io.PRECIP, io.DISCHARGE, io.PHOTOPERIOD, io.TMEAN])
+    cfg = {"catchment": {"evapotranspiration_method": "ThornthwaiteChang2019"}}
+    r = mnished.validate_forcing(df, cfg)
+    assert any(io.TMIN in e or io.TMAX in e for e in r.errors)

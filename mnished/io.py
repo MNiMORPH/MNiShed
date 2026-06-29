@@ -68,22 +68,24 @@ FORCING_COLUMNS = (
                   "Observed streamflow at the gauge (converted to mm/day using "
                   "catchment.drainage_basin_area__km2)."),
     ForcingColumn(TMEAN, "deg C",
-                  "a daily mean temperature is needed by ThornthwaiteChang2019 "
-                  "(error), an active snowmelt.fdd_threshold (error), and "
-                  "modules.snowpack (warning); supply this column OR both Min and "
-                  "Max (the model derives the mean from their midpoint)",
-                  "Daily mean temperature; drives Thornthwaite ET, snowmelt, and "
-                  "the frozen-ground index. Synthesized from Min+Max if absent."),
+                  "a daily mean temperature is needed by snowmelt/frozen ground — "
+                  "error if an active snowmelt.fdd_threshold, warning if "
+                  "modules.snowpack — but supply this column OR both Min and Max "
+                  "(the model derives the mean from their midpoint)",
+                  "Daily mean temperature; drives snowmelt and the frozen-ground "
+                  "index. Synthesized from Min+Max if absent. (Thornthwaite ET "
+                  "uses Min/Max directly, not this column.)"),
     ForcingColumn(TMIN, "deg C",
-                  "with Max, substitutes for Mean Temperature; also recommended "
-                  "for modules.dtr_fgi_decay (falls back to a constant decay "
-                  "without it)",
-                  "Daily minimum temperature; with the maximum gives the diurnal "
-                  "temperature range for frozen-ground-index decay and the "
-                  "midpoint mean temperature."),
+                  "**error** for ThornthwaiteChang2019 (the Chang effective "
+                  "temperature uses the diurnal range); with Max also supplies "
+                  "the snowmelt mean and the dtr_fgi_decay range",
+                  "Daily minimum temperature; with the maximum gives the Chang "
+                  "effective temperature, the frozen-ground-index decay range, "
+                  "and the midpoint mean temperature."),
     ForcingColumn(TMAX, "deg C",
-                  "with Min, substitutes for Mean Temperature; also recommended "
-                  "for modules.dtr_fgi_decay (constant decay without it)",
+                  "**error** for ThornthwaiteChang2019 (the Chang effective "
+                  "temperature uses the diurnal range); with Min also supplies "
+                  "the snowmelt mean and the dtr_fgi_decay range",
                   "Daily maximum temperature; see Minimum Temperature."),
     ForcingColumn(PHOTOPERIOD, "hours",
                   "evapotranspiration_method ThornthwaiteChang2019",
@@ -223,12 +225,14 @@ def required_forcing_columns(config):
     }
     et = _et_method(config)
     if et == "ThornthwaiteChang2019":
-        # Thornthwaite reads Photoperiod and a daily mean temperature; the
-        # temperature requirement (Mean, or Min+Max) is handled by
-        # validate_forcing since it is a disjunction. Photoperiod also covers
-        # phenology photoperiod-senescence (which only acts under Thornthwaite),
-        # so no separate phenology requirement is needed.
-        req[PHOTOPERIOD] = "evapotranspiration_method is ThornthwaiteChang2019"
+        # The Chang effective temperature Tef = 0.5k(3*Tmax - Tmin) uses the
+        # diurnal range, plus the photoperiod — so Min, Max, and Photoperiod are
+        # the hard requirements (the snowmelt/phenology mean temperature is then
+        # derived from min+max). Photoperiod also covers phenology
+        # photoperiod-senescence, which only acts under Thornthwaite.
+        req[PHOTOPERIOD] = "ThornthwaiteChang2019 ET (uses day length)"
+        req[TMIN] = "ThornthwaiteChang2019 ET (effective temp uses the diurnal range)"
+        req[TMAX] = "ThornthwaiteChang2019 ET (effective temp uses the diurnal range)"
     elif et == "datafile":
         req[ET] = "evapotranspiration_method is datafile"
     return req
@@ -384,23 +388,21 @@ def validate_forcing(forcing, config=None):
         if col not in df.columns:
             report.warnings.append(f"forcing is missing column '{col}' ({reason})")
 
-    # Temperature: ThornthwaiteChang2019, snowmelt, and frozen ground all read
-    # 'Mean Temperature [C]', which the model synthesizes from Min+Max when
-    # absent — so either the mean column or both min and max satisfies it. An
-    # error when temperature is required (Thornthwaite ET, or an active
-    # fdd_threshold); a warning when only snowpack wants it (it disables
-    # silently without temperature).
-    if config is not None and not _has_temperature(df.columns):
+    # Snowmelt and frozen ground read a daily 'Mean Temperature [C]', which the
+    # model synthesizes from Min+Max when absent — so either the mean column or
+    # both min and max satisfies them. (ThornthwaiteChang2019 needs Min+Max in
+    # their own right, already required above, so this only adds anything for the
+    # datafile-ET case.) An error when an active fdd_threshold needs it; a warning
+    # when only snowpack wants it (it disables silently without temperature).
+    if (config is not None
+            and _et_method(cfg) != "ThornthwaiteChang2019"
+            and not _has_temperature(df.columns)):
         msg = ("forcing has no temperature input: needs 'Mean Temperature [C]', "
                "or both 'Minimum Temperature [C]' and 'Maximum Temperature [C]' "
                "to derive it")
-        needs = []
-        if _et_method(cfg) == "ThornthwaiteChang2019":
-            needs.append("ThornthwaiteChang2019 ET")
         if _fdd_threshold_active(cfg):
-            needs.append("snowmelt.fdd_threshold (frozen ground)")
-        if needs:
-            report.errors.append(f"{msg} — required by {', '.join(needs)}")
+            report.errors.append(
+                f"{msg} — required by snowmelt.fdd_threshold (frozen ground)")
         elif _modules(cfg).get("snowpack", True):
             report.warnings.append(f"{msg}; snowpack is disabled without it")
 
