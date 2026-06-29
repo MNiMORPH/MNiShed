@@ -1196,25 +1196,31 @@ def run_and_score(cfg, recession_coeff=None, f_to_discharge=None, Hmax=None,
     # that the numpy-based Nash cascade and downstream code handle them cleanly.
     q_mod = pd.to_numeric(
         b.hydrodata['Specific Discharge (modeled) [mm/day]'], errors='coerce')
+    # The store_fluxes per-source partition (fast/slow/lake) is recorded during
+    # the run and sums to the *unrouted* discharge. Mirror the two post-run
+    # transforms below onto it so it stays an exact decomposition of the final
+    # modelled discharge: the Nash cascade is linear, so routing each source
+    # through the *same* cascade preserves fast+slow+lake = routed total; the
+    # constant regional baseflow_Q (an external import, not from the reservoir
+    # cascade) is folded into the slow/baseflow source.
+    _partition = store_fluxes and all(
+        c in b.hydrodata.columns for c in b._FLUX_PARTITION_COLUMNS)
     if routing_K is not None:
-        routed = _nash_cascade(q_mod.to_numpy(), routing_N, routing_K)
-        q_mod  = pd.Series(routed, index=q_mod.index, name=q_mod.name)
+        q_mod = pd.Series(
+            _nash_cascade(q_mod.to_numpy(), routing_N, routing_K),
+            index=q_mod.index, name=q_mod.name)
+        if _partition:
+            for _col in b._FLUX_PARTITION_COLUMNS:
+                _comp = pd.to_numeric(b.hydrodata[_col], errors='coerce').to_numpy()
+                b.hydrodata[_col] = _nash_cascade(_comp, routing_N, routing_K)
     # Add constant regional baseflow after routing (external to reservoir cascade).
     if b.baseflow_Q != 0.0:
         q_mod = q_mod + b.baseflow_Q
+        if _partition:
+            _slow = 'Discharge: slow [mm/day]'
+            b.hydrodata[_slow] = (
+                pd.to_numeric(b.hydrodata[_slow], errors='coerce') + b.baseflow_Q)
     b.hydrodata['Specific Discharge (modeled) [mm/day]'] = q_mod
-
-    # The store_fluxes per-source partition (fast/slow/lake) is recorded during
-    # the run, before Nash routing and baseflow_Q are applied here, so it sums to
-    # the *unrouted* discharge. Warn rather than silently let a SeasonalMassBalance
-    # decomposition disagree with the routed 'Specific Discharge (modeled)'.
-    if store_fluxes and (routing_K is not None or b.baseflow_Q != 0.0):
-        warnings.warn(
-            "store_fluxes per-source partition is recorded before Nash routing / "
-            "baseflow_Q, so fast+slow+lake sums to the unrouted discharge, not the "
-            "routed 'Specific Discharge (modeled)'. For an exact source "
-            "decomposition use store_fluxes without routing_K / baseflow_Q.",
-            UserWarning, stacklevel=2)
 
     # --- Mask to scoring window ---
     q_obs = b.hydrodata['Specific Discharge [mm/day]']

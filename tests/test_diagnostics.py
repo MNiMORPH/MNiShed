@@ -193,12 +193,41 @@ def test_seasonal_et_includes_lake_evaporation(tmp_path):
                            equal_nan=True)   # lake E actually shifts it
 
 
-def test_store_fluxes_routing_warns(tmp_path):
-    """store_fluxes + Nash routing warns that the partition is pre-routing."""
+def test_store_fluxes_partition_exact_under_routing(tmp_path):
+    """fast/slow/lake stays an exact decomposition of the *routed* discharge: the
+    Nash cascade is linear, so routing each source through the same cascade keeps
+    the partition consistent with 'Specific Discharge (modeled)'. Regression for
+    MNiMORPH/MNiShed#36.2."""
     p = tmp_path / "cfg.yml"
     p.write_text(yaml.safe_dump(_flat_cfg()))
-    with warnings.catch_warnings(record=True) as caught:
-        warnings.simplefilter("always")
-        run_and_score(str(p), enforce_water_balance="water-year", metric="KGE",
-                      store_fluxes=True, routing_K=10.0)
-    assert any("before Nash routing" in str(w.message) for w in caught)
+    res = run_and_score(str(p), enforce_water_balance="water-year", metric="KGE",
+                        store_fluxes=True, routing_K=10.0)
+    hd = res.buckets.hydrodata
+    mod = pd.to_numeric(hd["Specific Discharge (modeled) [mm/day]"],
+                        errors="coerce").to_numpy()
+    parts = sum(pd.to_numeric(hd[c], errors="coerce").to_numpy() for c in FLUX)
+    m = np.isfinite(mod)
+    assert np.allclose(parts[m], mod[m], atol=1e-9)         # exact after routing
+    # and routing actually changed the series (so the test is meaningful)
+    unrouted = run_and_score(str(p), enforce_water_balance="water-year",
+                             metric="KGE", store_fluxes=True)
+    mod0 = pd.to_numeric(
+        unrouted.buckets.hydrodata["Specific Discharge (modeled) [mm/day]"],
+        errors="coerce").to_numpy()
+    both = np.isfinite(mod) & np.isfinite(mod0)
+    assert not np.allclose(mod[both], mod0[both], atol=1e-6)
+
+
+def test_store_fluxes_partition_exact_with_baseflow(tmp_path):
+    """baseflow_Q is folded into the slow source so the partition still sums to
+    the final discharge (MNiMORPH/MNiShed#36.2)."""
+    p = tmp_path / "cfg.yml"
+    p.write_text(yaml.safe_dump(_flat_cfg()))
+    res = run_and_score(str(p), enforce_water_balance="water-year", metric="KGE",
+                        store_fluxes=True, baseflow_Q=0.2)
+    hd = res.buckets.hydrodata
+    mod = pd.to_numeric(hd["Specific Discharge (modeled) [mm/day]"],
+                        errors="coerce").to_numpy()
+    parts = sum(pd.to_numeric(hd[c], errors="coerce").to_numpy() for c in FLUX)
+    m = np.isfinite(mod)
+    assert np.allclose(parts[m], mod[m], atol=1e-9)
