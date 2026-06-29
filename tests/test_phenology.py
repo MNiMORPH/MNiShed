@@ -376,3 +376,33 @@ def test_photoperiod_transfer_reverses_above_the_equinox(tmp_path):
     s_above = _browndown_doy(tmp_path, 41.5, above, "sa", level="onset")
     assert n_below < s_below          # sub-equinox: north earlier (correct)
     assert n_above > s_above          # above-equinox: north later (reversed)
+
+
+def _kc_from_df(tmp_path, df, name):
+    """Build a Thornthwaite+phenology model from a forcing DataFrame; return
+    (buckets, Kc array)."""
+    csv = tmp_path / f"{name}.csv"
+    df.to_csv(csv, index=False)
+    cfg = _cfg(phenology={"enabled": True})
+    cfg["timeseries"]["datafile"] = str(csv)
+    path = _write(tmp_path, cfg, name)
+    with warnings.catch_warnings():
+        warnings.simplefilter("ignore")
+        b = Buckets()
+        b.initialize(path, enforce_water_balance="global")
+    return b, np.asarray(b.phenology_Kc())
+
+
+def test_phenology_falls_back_on_minmax_mean(tmp_path):
+    """phenology GDD uses 'Mean Temperature [C]'; with that column absent the
+    model synthesizes it from (Tmin+Tmax)/2 at load, so phenology runs from a
+    min/max-only record and gives the SAME Kc as when the (midpoint) Mean column
+    is present. Confirms the fallback (Cannon's Mean already equals the
+    midpoint, so dropping it must not change Kc)."""
+    df = pd.read_csv(CANNON_CSV, parse_dates=["Date"])
+    b_with, kc_with = _kc_from_df(tmp_path, df, "with_mean")
+    b_no, kc_no = _kc_from_df(
+        tmp_path, df.drop(columns=["Mean Temperature [C]"]), "no_mean")
+    assert "Mean Temperature [C]" in b_no.hydrodata.columns   # synthesized at load
+    assert np.allclose(kc_with, kc_no)                        # identical GDD -> Kc
+    assert np.isfinite(kc_no).all()

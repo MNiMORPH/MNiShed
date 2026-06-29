@@ -1662,6 +1662,21 @@ class Buckets(object):
             self.cfg['timeseries']['datafile'],
             parse_dates=['Date'])
 
+        # If a mean-temperature column is absent but daily min and max are
+        # present, synthesize it as their midpoint. The Thornthwaite ET,
+        # snowmelt, and frozen-ground paths all read 'Mean Temperature [C]', so
+        # this lets them run from a min/max-only record and keeps the mean
+        # consistent with the GDD phenology (which already uses the midpoint).
+        # A provided mean column is preferred — it may be a true integrated
+        # daily mean, which the midpoint slightly over-estimates.
+        _cols = self.hydrodata.columns
+        if ('Mean Temperature [C]' not in _cols
+                and 'Minimum Temperature [C]' in _cols
+                and 'Maximum Temperature [C]' in _cols):
+            self.hydrodata['Mean Temperature [C]'] = 0.5 * (
+                self.hydrodata['Minimum Temperature [C]']
+                + self.hydrodata['Maximum Temperature [C]'])
+
         # Build the sub-catchment structure. A config may either give a single
         # basin-wide reservoir cascade (legacy: top-level "reservoirs" +
         # "initial_conditions" blocks) or partition the basin into parallel
@@ -2048,6 +2063,13 @@ class Buckets(object):
         )[_common].groupby('Water Year').mean()
         self.hydrodata_WY_means['ET multiplier'] = (
             (_closure['P'] - _closure['Q']) / _closure['demand'])
+        # A water year whose common-finite days carry zero ET demand (e.g. an
+        # all-sub-freezing finite-day set) divides by zero -> +/-inf. Map any
+        # non-finite multiplier to NaN so compute_ET's existing NaN handling
+        # (warn + fall back to raw ET) catches it instead of propagating inf.
+        self.hydrodata_WY_means['ET multiplier'] = (
+            self.hydrodata_WY_means['ET multiplier']
+            .replace([np.inf, -np.inf], np.nan))
 
         _bad_wy = self.hydrodata_WY_means.index[
             self.hydrodata_WY_means['ET multiplier'] <= 0]
@@ -2106,9 +2128,10 @@ class Buckets(object):
         if not getattr(self, 'use_phenology', False):
             return 1.0
         p = self.phenology_params
-        Tmean = 0.5 * (
-            np.asarray(self.hydrodata['Maximum Temperature [C]'], dtype=float)
-            + np.asarray(self.hydrodata['Minimum Temperature [C]'], dtype=float))
+        # Use the single 'Mean Temperature [C]' column (provided, or synthesized
+        # from min/max at load) so the GDD mean matches the Thornthwaite/snowmelt
+        # mean rather than being an independent min/max midpoint.
+        Tmean = np.asarray(self.hydrodata['Mean Temperature [C]'], dtype=float)
         gdd_day = np.maximum(Tmean - p['base_temperature__C'], 0.0)
         dates = pd.DatetimeIndex(self.hydrodata['Date'])
         years = dates.year.to_numpy()

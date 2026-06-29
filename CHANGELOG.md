@@ -46,6 +46,12 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   segfaults on NumPy 1.x, so NumPy 1.x is no longer a supported combination; the
   CI test matrix drops its `numpy<2` legs accordingly. The `jit` extra still
   narrows NumPy to `< 2.3` for the current Numba.
+- `Mean Temperature [C]` is now optional when `Minimum` and `Maximum Temperature`
+  are present: the model synthesizes the mean from their midpoint at load, so
+  Thornthwaite ET, snowmelt, frozen ground, and the GDD phenology all run from a
+  min/max-only forcing. A provided mean column is still preferred (it may be a
+  true integrated daily mean); the phenology GDD now uses the same single mean
+  column rather than its own midpoint.
 
 ### Fixed
 

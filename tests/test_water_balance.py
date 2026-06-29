@@ -132,3 +132,22 @@ def test_water_year_closure_under_ragged_gaps(tmp_path):
             continue
         residual = P[m].mean() - Q[m].mean() - et[m].mean()
         assert abs(residual) < 1e-9, f"WY {y} does not close: residual={residual}"
+
+
+def test_water_year_multiplier_no_inf_on_zero_demand(tmp_path):
+    """A water year whose finite days carry zero ET demand divides by zero; the
+    multiplier is mapped to NaN (then handled as raw ET) rather than propagating
+    inf into the modelled discharge. Regression for the #36 pre-release review."""
+    import pandas as pd
+    df = pd.read_csv(CANNON_CSV, parse_dates=["Date"])
+    wy93 = (df["Date"] >= "1992-10-01") & (df["Date"] <= "1993-09-30")
+    df.loc[wy93, "Evapotranspiration [mm/day]"] = 0.0        # zero demand that WY
+    zero = tmp_path / "zero_et.csv"
+    df.to_csv(zero, index=False)
+    cfg = _cfg("datafile")
+    cfg["timeseries"]["datafile"] = str(zero)
+    b = _build(tmp_path, cfg, "water-year")
+    mult = b.hydrodata_WY_means["ET multiplier"].to_numpy()
+    assert not np.isinf(mult).any()                         # guarded: no infinities
+    et = b.hydrodata["ET for model [mm/day]"].to_numpy()
+    assert not np.isinf(et).any()                           # no inf propagation
