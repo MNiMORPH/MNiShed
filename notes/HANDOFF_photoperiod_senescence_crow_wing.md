@@ -82,3 +82,33 @@ Re-run your best 8-decade config three ways — `doy` 260/305 (your current),
 `photoperiod` 11.0/1.8 (new default), `photoperiod` 11.5/1.8 (earlier onset) —
 holding everything else fixed. Report the seasonal mod/obs (esp. SON) and
 `KGE_logKGE`. The honest outcome is the finding regardless of direction.
+
+## RESULTS — 3-way re-validation (2026-06-29)
+
+Ran the comparison on the in-repo `examples/crow_wing/` (8-decade multi-window
+SCE-UA, ~3100 evals each to convergence, all params free except senescence held
+at each setting):
+
+| senescence | KGE_logKGE | leafout_GDD | DJF | MAM | JJA | SON |
+|---|---|---|---|---|---|---|
+| `doy` 260/305      | 0.711 | 149 | 1.05 | 0.87 | 0.95 | 1.13 |
+| `photoperiod` 11.0 | 0.702 | 129 | 1.14 | 0.86 | 0.95 | 1.08 |
+| `photoperiod` 11.5 | 0.717 | 206 | 0.93 | 0.83 | 1.01 | 1.16 |
+
+**Finding: a wash.** The three span 0.702–0.717 — within single-run SCE-UA noise
+on this (flat) objective; the very different `leafout_GDD`/PDD landing at
+near-identical scores is the documented equifinality (#37). Photoperiod
+senescence neither helps nor hurts the Crow Wing fit, and the seasonal shapes are
+similar.
+
+**Why this is expected / what it does and doesn't show.** A *single-basin* test
+is structurally blind to photoperiod's actual benefit — **latitude-transferability**
+(one setting placing brown-down correctly across many basins without re-tuning).
+At one latitude, `doy` and `photoperiod` are just two equally-fittable
+parameterizations of the same autumn shape. So this confirms the photoperiod
+option is **sound and reasonable on real data** (doesn't degrade the fit;
+physical params), but the transfer claim needs a **multi-basin latitude-gradient**
+test (fix senescence, calibrate the rest, compare `doy` vs `photoperiod` transfer
+across basins) — not yet run. Reinforces that photoperiod-vs-`doy` is a
+refinement, not the substance; the demonstrated upgrade is the data-grounded
+`leafout_GDD_from_date` prior (~185 from data vs ~200 calibrated).
