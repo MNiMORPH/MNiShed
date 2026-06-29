@@ -9,7 +9,10 @@ packages = ["mnished"]
 name = "MNiShed"
 dynamic = ["version"]
 dependencies = [
-  "numpy",
+  # NumPy >= 2 is required: pandas >= 3 is built against the NumPy-2 ABI and
+  # segfaults on NumPy 1.x. The optional `jit` extra narrows this to < 2.3 for
+  # Numba compatibility.
+  "numpy>=2",
   "pandas",
   "matplotlib",
   "pyyaml",

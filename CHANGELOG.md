@@ -36,6 +36,13 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Schwartz et al. 2013) and carries the latitude dependence implicitly
   (MNiMORPH/MNiShed#35).
 
+### Changed
+
+- Require `numpy>=2`. Modern `pandas` (>= 3) is built against the NumPy-2 ABI and
+  segfaults on NumPy 1.x, so NumPy 1.x is no longer a supported combination; the
+  CI test matrix drops its `numpy<2` legs accordingly. The `jit` extra still
+  narrows NumPy to `< 2.3` for the current Numba.
+
 ### Fixed
 
 - Water-year ET closure under ragged records: `compute_ET_multiplier` now
