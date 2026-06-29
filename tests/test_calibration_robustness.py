@@ -175,3 +175,13 @@ def test_unknown_metric_lists_seasonal_option(tmp_path):
     path = _write_cfg(tmp_path, _legacy_cfg())
     with pytest.raises(ValueError, match="KGE_logKGE_seasonal"):
         mnished.run_and_score(path, metric="not_a_metric")
+
+
+def test_seasonal_metric_nan_on_subyear_window(tmp_path):
+    """A scoring window that does not span all four seasons returns NaN, not a
+    partial-season score masquerading as the four-season objective (#37 review)."""
+    path = _write_cfg(tmp_path, _legacy_cfg())
+    r = mnished.run_and_score(path, enforce_water_balance="global",
+                              metric="KGE_logKGE_seasonal",
+                              start="1993-06-01", end="1993-08-31")   # JJA only
+    assert math.isnan(r.score)

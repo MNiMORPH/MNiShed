@@ -320,32 +320,41 @@ _METRICS = {'NSE': _nse, 'KGE': _kge, 'logKGE': _log_kge,
             'KGE_logKGE_logFDC_BFI': _kge_logkge_logfdc_bfi,
             'logKGE_logFDC_BFI': _logkge_logfdc_bfi}
 
-_SEASON_OF_MONTH = {12: 'DJF', 1: 'DJF', 2: 'DJF',
-                    3: 'MAM', 4: 'MAM', 5: 'MAM',
-                    6: 'JJA', 7: 'JJA', 8: 'JJA',
-                    9: 'SON', 10: 'SON', 11: 'SON'}
+# Meteorological-season index by calendar month (1-12): DJF=0, MAM=1, JJA=2,
+# SON=3. Index 0 is an unused placeholder so `_SEASON_INDEX[months]` maps a 1-12
+# month array to season indices in one vectorised lookup (no per-eval Python loop).
+_SEASON_INDEX = np.array([0, 0, 0, 1, 1, 1, 2, 2, 2, 3, 3, 3, 0])
 
 
 def _seasonal_mean(base, m, o, months, min_per_season=10):
     """Equal-weight-per-season objective: the base metric computed independently
-    within each meteorological season (DJF/MAM/JJA/SON), then averaged across the
-    seasons that have at least ``min_per_season`` scored days.
+    within each meteorological season (DJF/MAM/JJA/SON), then averaged with equal
+    weight over the four.
 
     A whole-record metric is dominated by the high-volume seasons, so a fit can
     swap a slightly-too-high winter for a slightly-too-high fall at nearly the
     same score (the flat-objective trade-off on lake/snowmelt basins). Weighting
     the four seasons equally instead makes a parameter set satisfy all of them
-    (MNiMORPH/MNiShed#37). Returns NaN if fewer than one season qualifies.
+    (MNiMORPH/MNiShed#37).
+
+    This is the equal-weight mean over **all four** seasons, so it is only
+    meaningful over a scoring window that spans the full seasonal cycle. If any
+    season has fewer than ``min_per_season`` scored days (a sub-year window) or a
+    season's base score is non-finite, it returns NaN rather than silently
+    averaging a partial subset — a sub-year window therefore yields NaN, not a
+    two-season score masquerading as the four-season objective.
     """
-    labels = np.array([_SEASON_OF_MONTH[int(mo)] for mo in months])
+    season = _SEASON_INDEX[np.asarray(months, dtype=int)]
     scores = []
-    for season in ('DJF', 'MAM', 'JJA', 'SON'):
-        sel = labels == season
-        if int(sel.sum()) >= min_per_season:
-            s = base(m[sel], o[sel])
-            if np.isfinite(s):
-                scores.append(s)
-    return float(np.mean(scores)) if scores else float('nan')
+    for s in range(4):
+        sel = season == s
+        if int(sel.sum()) < min_per_season:
+            return float('nan')          # window does not span all four seasons
+        value = base(m[sel], o[sel])
+        if not np.isfinite(value):
+            return float('nan')
+        scores.append(value)
+    return float(np.mean(scores))
 
 
 # Season-aware objectives: name -> base (m, o) metric averaged equally over the
