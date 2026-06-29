@@ -103,3 +103,32 @@ def test_datafile_demand_is_the_input_column(tmp_path):
     assert np.allclose(b._demand_ET(),
                        b.hydrodata["Evapotranspiration [mm/day]"].to_numpy(),
                        equal_nan=True)
+
+
+def test_water_year_closure_under_ragged_gaps(tmp_path):
+    """With P, Q, and the ET demand each missing on *different* days, the
+    per-water-year closure must still hold over the days where all three are
+    present — the multiplier is built on that common finite mask, not on
+    per-column NaN-skipping means (which would close the balance only
+    approximately under ragged gaps). Regression for MNiMORPH/MNiShed#36.1."""
+    import pandas as pd
+    df = pd.read_csv(CANNON_CSV, parse_dates=["Date"])
+    i = np.arange(len(df))
+    df.loc[i % 9 == 0, "Discharge [m^3/s]"] = np.nan       # Q gaps ...
+    df.loc[i % 7 == 0, "Precipitation [mm/day]"] = np.nan  # ... on different days than P
+    ragged = tmp_path / "ragged.csv"
+    df.to_csv(ragged, index=False)
+
+    cfg = _cfg("datafile")
+    cfg["timeseries"]["datafile"] = str(ragged)
+    b = _build(tmp_path, cfg, "water-year")
+
+    et, P, Q, wy, _ = _terms(b)
+    demand = np.asarray(b._demand_ET(), dtype=float)
+    common = np.isfinite(P) & np.isfinite(Q) & np.isfinite(demand)
+    for y in np.unique(wy[common]):
+        m = common & (wy == y)
+        if m.sum() < 5:
+            continue
+        residual = P[m].mean() - Q[m].mean() - et[m].mean()
+        assert abs(residual) < 1e-9, f"WY {y} does not close: residual={residual}"

@@ -2028,18 +2028,26 @@ class Buckets(object):
         self.hydrodata_WY_means['Runoff ratio'] = (
             self.hydrodata_WY_means['Specific Discharge [mm/day]']
             / self.hydrodata_WY_means['Precipitation [mm/day]'])
-        _ET_required = -(self.hydrodata_WY_means['Specific Discharge [mm/day]'] -
-                         self.hydrodata_WY_means['Precipitation [mm/day]'])
-        # Normalise against the actual ET *demand* compute_ET will scale
-        # (Thornthwaite × phenology, or measured ET), not the raw input ET
-        # column. For datafile mode the demand equals that column, so this is
-        # unchanged; for Thornthwaite (and with phenology) it is what closes the
-        # per-water-year balance. See _demand_ET().
-        _demand_WY_mean = pd.Series(
-            self._demand_ET(), index=self.hydrodata.index
-        ).groupby(self.hydrodata['Water Year']).mean()
+        # The per-water-year closure (P - Q - ET = 0) must average P, Q, and the
+        # ET *demand* over the SAME days. A plain groupby-mean skips NaN per
+        # column, so with ragged missing forcing/discharge each term's mean would
+        # be taken over a different day-set and the multiplier would not actually
+        # close the balance. Restrict all three to the days where every term is
+        # finite, then take per-water-year means, so the ratio closes the balance
+        # exactly over the days it is applied to. (For a gap-free record the
+        # common mask is the whole record, so this is unchanged.) The demand is
+        # what compute_ET will scale (Thornthwaite × phenology, or measured ET),
+        # not the raw input ET column — see _demand_ET().
+        _P      = np.asarray(self.hydrodata['Precipitation [mm/day]'], dtype=float)
+        _Q      = np.asarray(self.hydrodata['Specific Discharge [mm/day]'], dtype=float)
+        _demand = np.asarray(self._demand_ET(), dtype=float)
+        _common = np.isfinite(_P) & np.isfinite(_Q) & np.isfinite(_demand)
+        _closure = pd.DataFrame(
+            {'P': _P, 'Q': _Q, 'demand': _demand,
+             'Water Year': np.asarray(self.hydrodata['Water Year'])}
+        )[_common].groupby('Water Year').mean()
         self.hydrodata_WY_means['ET multiplier'] = (
-            _ET_required / _demand_WY_mean)
+            (_closure['P'] - _closure['Q']) / _closure['demand'])
 
         _bad_wy = self.hydrodata_WY_means.index[
             self.hydrodata_WY_means['ET multiplier'] <= 0]
