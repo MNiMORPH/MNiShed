@@ -197,3 +197,47 @@ def test_spec_is_exposed_for_documentation():
     names = [c.name for c in io.FORCING_COLUMNS]
     assert io.PRECIP in names and io.DISCHARGE in names
     assert "timeseries" in io.CONFIG_SECTIONS
+
+
+# --------------------------------------------------------------------------
+# Pre-release review fixes (#1-#3): temperature disjunction, photoperiod
+# false-positive, non-numeric fdd_threshold.
+# --------------------------------------------------------------------------
+
+def test_thornthwaite_accepts_minmax_for_temperature():
+    """Thornthwaite needs a mean temperature, but Min+Max suffice (the model
+    derives the mean) — so a min/max-only forcing validates clean."""
+    df = _forcing([io.PRECIP, io.DISCHARGE, io.PHOTOPERIOD, io.TMIN, io.TMAX])
+    cfg = {"catchment": {"evapotranspiration_method": "ThornthwaiteChang2019"}}
+    assert mnished.validate_forcing(df, cfg).ok
+
+
+def test_thornthwaite_without_any_temperature_errors():
+    df = _forcing([io.PRECIP, io.DISCHARGE, io.PHOTOPERIOD])
+    cfg = {"catchment": {"evapotranspiration_method": "ThornthwaiteChang2019"}}
+    r = mnished.validate_forcing(df, cfg)
+    assert any("temperature" in e for e in r.errors)
+
+
+def test_datafile_phenology_photoperiod_does_not_require_photoperiod():
+    """datafile mode ignores phenology, so phenology senescence_method=photoperiod
+    must NOT make Photoperiod required (was a false ERROR)."""
+    df = _forcing([io.PRECIP, io.DISCHARGE, io.ET, io.TMEAN])
+    cfg = {"catchment": {"evapotranspiration_method": "datafile"},
+           "phenology": {"enabled": True, "senescence_method": "photoperiod"},
+           "modules": {"snowpack": False, "dtr_fgi_decay": False}}
+    r = mnished.validate_forcing(df, cfg)
+    assert r.ok and not any(io.PHOTOPERIOD in e for e in r.errors)
+
+
+def test_nonnumeric_fdd_threshold_reports_cleanly():
+    cfg = _good_config()
+    cfg["snowmelt"] = {"fdd_threshold": "auto"}          # not a number
+    r = mnished.validate_config(cfg)
+    assert any("fdd_threshold must be a number" in e for e in r.errors)
+
+
+def test_inf_fdd_threshold_is_accepted():
+    cfg = _good_config()
+    cfg["snowmelt"] = {"fdd_threshold": float("inf")}     # the 'never frozen' default
+    assert mnished.validate_config(cfg).ok

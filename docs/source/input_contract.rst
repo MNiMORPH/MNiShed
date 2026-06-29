@@ -67,14 +67,18 @@ The programmatic source of truth is :data:`mnished.io.FORCING_COLUMNS`.
      - always (converted to mm/day via ``drainage_basin_area__km2``)
    * - ``Mean Temperature [C]``
      - °C
-     - **error** if ``snowmelt.fdd_threshold`` is set; **warning** if
-       ``modules.snowpack`` is on (snowpack disabled without it)
+     - a daily mean temperature is **required** (error) by
+       ``ThornthwaiteChang2019`` ET and an active ``snowmelt.fdd_threshold``, and
+       wanted (warning) by ``modules.snowpack`` — but supply *either* this column
+       *or* both Min and Max: the model derives the mean from their midpoint
    * - ``Minimum Temperature [C]``
      - °C
-     - **warning** if ``modules.dtr_fgi_decay`` is on (constant-decay fallback)
+     - with Max, substitutes for ``Mean Temperature [C]``; also recommended for
+       ``modules.dtr_fgi_decay`` (constant-decay fallback without it)
    * - ``Maximum Temperature [C]``
      - °C
-     - **warning** if ``modules.dtr_fgi_decay`` is on (constant-decay fallback)
+     - with Min, substitutes for ``Mean Temperature [C]``; also recommended for
+       ``modules.dtr_fgi_decay`` (constant-decay fallback without it)
    * - ``Photoperiod [hr]``
      - hours
      - **error** if ``evapotranspiration_method`` is ``ThornthwaiteChang2019``

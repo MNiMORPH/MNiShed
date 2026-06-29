@@ -68,24 +68,28 @@ FORCING_COLUMNS = (
                   "Observed streamflow at the gauge (converted to mm/day using "
                   "catchment.drainage_basin_area__km2)."),
     ForcingColumn(TMEAN, "deg C",
-                  "snowmelt.fdd_threshold set (error); else modules.snowpack on "
-                  "(recommended — snowpack is disabled without it)",
-                  "Daily mean temperature; drives snowmelt and the frozen-ground "
-                  "index."),
+                  "a daily mean temperature is needed by ThornthwaiteChang2019 "
+                  "(error), an active snowmelt.fdd_threshold (error), and "
+                  "modules.snowpack (warning); supply this column OR both Min and "
+                  "Max (the model derives the mean from their midpoint)",
+                  "Daily mean temperature; drives Thornthwaite ET, snowmelt, and "
+                  "the frozen-ground index. Synthesized from Min+Max if absent."),
     ForcingColumn(TMIN, "deg C",
-                  "modules.dtr_fgi_decay on (recommended — falls back to a "
-                  "constant decay without it)",
+                  "with Max, substitutes for Mean Temperature; also recommended "
+                  "for modules.dtr_fgi_decay (falls back to a constant decay "
+                  "without it)",
                   "Daily minimum temperature; with the maximum gives the diurnal "
-                  "temperature range for frozen-ground-index decay."),
+                  "temperature range for frozen-ground-index decay and the "
+                  "midpoint mean temperature."),
     ForcingColumn(TMAX, "deg C",
-                  "modules.dtr_fgi_decay on (recommended — falls back to a "
-                  "constant decay without it)",
+                  "with Min, substitutes for Mean Temperature; also recommended "
+                  "for modules.dtr_fgi_decay (constant decay without it)",
                   "Daily maximum temperature; see Minimum Temperature."),
     ForcingColumn(PHOTOPERIOD, "hours",
                   "evapotranspiration_method ThornthwaiteChang2019",
                   "Day length, from latitude and date; required by the "
-                  "Thornthwaite-Chang reference ET (and by photoperiod "
-                  "senescence)."),
+                  "Thornthwaite-Chang reference ET (which also covers phenology "
+                  "photoperiod senescence)."),
     ForcingColumn(ET, "mm/day",
                   "evapotranspiration_method datafile",
                   "Measured/reference evapotranspiration, used directly when "
@@ -182,6 +186,26 @@ def _modules(config):
     return config.get("modules", {}) or {}
 
 
+def _is_number(value):
+    """True for a real numeric value (incl. inf), excluding bool/str/None."""
+    return isinstance(value, (int, float)) and not isinstance(value, bool)
+
+
+def _fdd_threshold_active(config):
+    """True when snowmelt.fdd_threshold is a finite number (a real threshold).
+
+    ``inf`` (the default 'never frozen') and non-numeric values are not active.
+    """
+    fdd = (config.get("snowmelt", {}) or {}).get("fdd_threshold")
+    return _is_number(fdd) and np.isfinite(fdd)
+
+
+def _has_temperature(columns):
+    """The model needs a daily mean temperature, which it reads from
+    'Mean Temperature [C]' or synthesizes from Min+Max — so either suffices."""
+    return TMEAN in columns or (TMIN in columns and TMAX in columns)
+
+
 def required_forcing_columns(config):
     """
     The forcing columns that are *hard*-required for this config.
@@ -199,15 +223,14 @@ def required_forcing_columns(config):
     }
     et = _et_method(config)
     if et == "ThornthwaiteChang2019":
+        # Thornthwaite reads Photoperiod and a daily mean temperature; the
+        # temperature requirement (Mean, or Min+Max) is handled by
+        # validate_forcing since it is a disjunction. Photoperiod also covers
+        # phenology photoperiod-senescence (which only acts under Thornthwaite),
+        # so no separate phenology requirement is needed.
         req[PHOTOPERIOD] = "evapotranspiration_method is ThornthwaiteChang2019"
     elif et == "datafile":
         req[ET] = "evapotranspiration_method is datafile"
-    fdd = (config.get("snowmelt", {}) or {}).get("fdd_threshold")
-    if fdd is not None and np.isfinite(fdd):
-        req[TMEAN] = "snowmelt.fdd_threshold is set (frozen-ground needs temperature)"
-    phen = config.get("phenology", {}) or {}
-    if phen.get("enabled") and phen.get("senescence_method") == "photoperiod":
-        req.setdefault(PHOTOPERIOD, "phenology senescence_method is 'photoperiod'")
     return req
 
 
@@ -216,15 +239,11 @@ def recommended_forcing_columns(config, already_required=None):
     Forcing columns that are *soft*-required (missing → degraded behaviour).
 
     Returns ``{column_name: reason}`` for columns MNiShed will run without, but
-    with a fallback (a missing temperature disables snowpack; missing
-    min/max temperature falls back to a constant frozen-ground decay).
+    with a fallback. (The temperature requirement — Mean, or Min+Max — is checked
+    separately by :func:`validate_forcing` since it is a disjunction.)
     """
-    already_required = already_required or {}
     rec = {}
-    mods = _modules(config)
-    if mods.get("snowpack", True) and TMEAN not in already_required:
-        rec[TMEAN] = "modules.snowpack is on; snowpack is disabled without it"
-    if mods.get("dtr_fgi_decay", True):
+    if _modules(config).get("dtr_fgi_decay", True):
         for col in (TMIN, TMAX):
             rec[col] = ("modules.dtr_fgi_decay is on; falls back to a constant "
                         "frozen-ground-index decay without it")
@@ -269,6 +288,12 @@ def validate_config(config):
         report.errors.append(
             f"catchment.evapotranspiration_method must be one of "
             f"{list(ET_METHODS)}; got {et!r}")
+
+    fdd = (cfg.get("snowmelt", {}) or {}).get("fdd_threshold")
+    if fdd is not None and not _is_number(fdd):
+        report.errors.append(
+            f"snowmelt.fdd_threshold must be a number [°C·day] (or omitted); "
+            f"got {fdd!r}")
 
     has_res = isinstance(cfg.get("reservoirs"), dict)
     subs = cfg.get("sub_catchments")
@@ -358,6 +383,26 @@ def validate_forcing(forcing, config=None):
     for col, reason in recommended_forcing_columns(cfg, required).items():
         if col not in df.columns:
             report.warnings.append(f"forcing is missing column '{col}' ({reason})")
+
+    # Temperature: ThornthwaiteChang2019, snowmelt, and frozen ground all read
+    # 'Mean Temperature [C]', which the model synthesizes from Min+Max when
+    # absent — so either the mean column or both min and max satisfies it. An
+    # error when temperature is required (Thornthwaite ET, or an active
+    # fdd_threshold); a warning when only snowpack wants it (it disables
+    # silently without temperature).
+    if config is not None and not _has_temperature(df.columns):
+        msg = ("forcing has no temperature input: needs 'Mean Temperature [C]', "
+               "or both 'Minimum Temperature [C]' and 'Maximum Temperature [C]' "
+               "to derive it")
+        needs = []
+        if _et_method(cfg) == "ThornthwaiteChang2019":
+            needs.append("ThornthwaiteChang2019 ET")
+        if _fdd_threshold_active(cfg):
+            needs.append("snowmelt.fdd_threshold (frozen ground)")
+        if needs:
+            report.errors.append(f"{msg} — required by {', '.join(needs)}")
+        elif _modules(cfg).get("snowpack", True):
+            report.warnings.append(f"{msg}; snowpack is disabled without it")
 
     # Date continuity (mirrors Buckets.initialize's daily-series requirement).
     if DATE in df.columns:
