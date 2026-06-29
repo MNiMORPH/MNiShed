@@ -36,6 +36,23 @@ and this project adheres to [Semantic Versioning](https://semver.org/spec/v2.0.0
   Schwartz et al. 2013) and carries the latitude dependence implicitly
   (MNiMORPH/MNiShed#35).
 
+### Fixed
+
+- Water-year ET closure under ragged records: `compute_ET_multiplier` now
+  averages precipitation, discharge, and the ET demand over a *common* finite
+  day-set before forming the per-water-year multiplier. Previously each term's
+  per-water-year mean skipped missing days independently, so with ragged missing
+  forcing/discharge the closure was only approximate (off by up to ~0.1 mm/day
+  per year in testing); it is now exact over the days it is applied to, and
+  unchanged for gap-free records (MNiMORPH/MNiShed#36).
+- `store_fluxes` source partition under routing/baseflow: the fast/slow/lake
+  partition now stays an exact decomposition of the final modelled discharge when
+  Nash routing (`routing_K`) or `baseflow_Q` is applied. Each source is routed
+  through the same (linear) Nash cascade and `baseflow_Q` is folded into the slow
+  source, so `fast + slow + lake` equals `Specific Discharge (modeled)`; the
+  previous behaviour recorded the partition before routing and only warned
+  (MNiMORPH/MNiShed#36).
+
 ## [3.2.0] - 2026-06-28
 
 ### Added
